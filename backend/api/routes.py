@@ -97,7 +97,7 @@ def chat_endpoint(request: dict, req: Request = None):
     stage    = context.get("stage", "unknown")
 
     try:
-        from utils.logger import log_event
+        from utils.logger import log_chat
         email = _resolve_email(req)
     except Exception:
         email = "unknown"
@@ -170,11 +170,10 @@ def chat_endpoint(request: dict, req: Request = None):
             # Update per-user token budget
             if tokens_used > 0:
                 _user_tokens[email] = _user_tokens.get(email, 0) + tokens_used
-            # Log Q&A to stdout + Sheets
-            reply_preview = "".join(reply_chunks)[:200]
+            # Log Q&A to stdout + Sheets (chatbot tab)
+            full_reply = "".join(reply_chunks)
             try:
-                log_event(email, "agent_query",
-                          f"[{stage}] tokens={tokens_used} Q: {message[:100]} | A: {reply_preview[:100]}")
+                log_chat(email, stage, tokens_used, message, full_reply, context)
             except Exception:
                 pass
         yield f"data: {json.dumps({'done': True})}\n\n"
