@@ -2,7 +2,7 @@
  * ResultsStage — full design conditions: ACF selector, comparison table,
  * percentile table, yearly summary, winterization, OM section, psychro chart.
  */
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useStore } from "../store";
 import { getPsychroChart, getScatterData, getHeatmapData, getFreezingData, downloadResults } from "../api";
 import type { OmStat, AshraConditionResult } from "../api";
@@ -156,6 +156,27 @@ export default function ResultsStage() {
   const [omFreezeLoading, setOmFreezeLoading] = useState(false);
   const [omChartSrc,      setOmChartSrc]      = useState<string | null>(null);
   const [omChartLoading,  setOmChartLoading]  = useState(false);
+
+  // Auto-load NOAA charts whenever the process token changes (includes first mount
+  // and navigation back to this stage after re-processing).
+  useEffect(() => {
+    const t = processResult?.result_token;
+    if (!t) return;
+    setScatterPts(null); setFreezeBars(null); setHeatCells(null);
+    getScatterData(t, units).then((r) => setScatterPts(r.points)).catch(() => setScatterPts([]));
+    getFreezingData(t).then((r) => setFreezeBars(r.bars)).catch(() => setFreezeBars([]));
+    getHeatmapData(t, units).then((r) => setHeatCells(r.cells)).catch(() => setHeatCells([]));
+  }, [processResult?.result_token]);
+
+  // Auto-load OM charts once the OM token is available.
+  useEffect(() => {
+    const omT = omResult?.om_token;
+    if (!omT) return;
+    setOmScatterPts(null); setOmFreezeBars(null); setOmHeatCells(null);
+    getScatterData(omT, units).then((r) => setOmScatterPts(r.points)).catch(() => setOmScatterPts([]));
+    getFreezingData(omT).then((r) => setOmFreezeBars(r.bars)).catch(() => setOmFreezeBars([]));
+    getHeatmapData(omT, units).then((r) => setOmHeatCells(r.cells)).catch(() => setOmHeatCells([]));
+  }, [omResult?.om_token]);
 
   if (!processResult) return null;
 
@@ -529,12 +550,7 @@ export default function ResultsStage() {
         <div className="mb-4">
           <div className="flex items-center justify-between mb-2">
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Weather scatter — Tdb vs Twb</p>
-            {!scatterPts && (
-              <button onClick={loadScatter} disabled={scatterLoading}
-                className="text-xs px-2 py-1 rounded border border-[#2e3148] text-[#8b90a8] hover:border-[#4f8ef7] disabled:opacity-40 bg-transparent">
-                {scatterLoading ? "Loading…" : "▶ Load"}
-              </button>
-            )}
+            {!scatterPts && <span className="text-xs text-gray-400 animate-pulse">Loading…</span>}
           </div>
           {scatterPts && scatterPts.length > 0 && (
             <ResponsiveContainer width="100%" height={280}>
@@ -558,13 +574,8 @@ export default function ResultsStage() {
         {/* Freezing bar */}
         <div className="mb-4">
           <div className="flex items-center justify-between mb-2">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Freezing hours per fiscal week</p>
-            {!freezeBars && (
-              <button onClick={loadFreezing} disabled={freezeLoading}
-                className="text-xs px-2 py-1 rounded border border-[#2e3148] text-[#8b90a8] hover:border-[#4f8ef7] disabled:opacity-40 bg-transparent">
-                {freezeLoading ? "Loading…" : "▶ Load"}
-              </button>
-            )}
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Freezing hours per ISO week (15yr)</p>
+            {!freezeBars && <span className="text-xs text-gray-400 animate-pulse">Loading…</span>}
           </div>
           {freezeBars && freezeBars.length > 0 && (
             <ResponsiveContainer width="100%" height={200}>
@@ -579,16 +590,11 @@ export default function ResultsStage() {
           )}
         </div>
 
-        {/* Min temp heatmap (text table fallback) */}
+        {/* Min temp heatmap */}
         <div>
           <div className="flex items-center justify-between mb-2">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Min temperature heatmap</p>
-            {!heatCells && (
-              <button onClick={loadHeatmap} disabled={heatLoading}
-                className="text-xs px-2 py-1 rounded border border-[#2e3148] text-[#8b90a8] hover:border-[#4f8ef7] disabled:opacity-40 bg-transparent">
-                {heatLoading ? "Loading…" : "▶ Load"}
-              </button>
-            )}
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Min temperature heatmap (15yr)</p>
+            {!heatCells && <span className="text-xs text-gray-400 animate-pulse">Loading…</span>}
           </div>
           {heatCells && heatCells.length > 0 && (() => {
             const years = [...new Set(heatCells.map((c) => c.year))].sort();
@@ -642,12 +648,7 @@ export default function ResultsStage() {
           <div className="mb-4">
             <div className="flex items-center justify-between mb-2">
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Weather scatter — Tdb vs Twb</p>
-              {!omScatterPts && (
-                <button onClick={loadOmScatter} disabled={omScatterLoading}
-                  className="text-xs px-2 py-1 rounded border border-[#2e3148] text-[#8b90a8] hover:border-[#4f8ef7] disabled:opacity-40 bg-transparent">
-                  {omScatterLoading ? "Loading…" : "▶ Load"}
-                </button>
-              )}
+              {!omScatterPts && <span className="text-xs text-gray-400 animate-pulse">Loading…</span>}
             </div>
             {omScatterPts && omScatterPts.length > 0 && (
               <ResponsiveContainer width="100%" height={280}>
@@ -671,13 +672,8 @@ export default function ResultsStage() {
           {/* Freezing bar */}
           <div className="mb-4">
             <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Freezing hours per fiscal week</p>
-              {!omFreezeBars && (
-                <button onClick={loadOmFreezing} disabled={omFreezeLoading}
-                  className="text-xs px-2 py-1 rounded border border-[#2e3148] text-[#8b90a8] hover:border-[#4f8ef7] disabled:opacity-40 bg-transparent">
-                  {omFreezeLoading ? "Loading…" : "▶ Load"}
-                </button>
-              )}
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Freezing hours per ISO week (15yr)</p>
+              {!omFreezeBars && <span className="text-xs text-gray-400 animate-pulse">Loading…</span>}
             </div>
             {omFreezeBars && omFreezeBars.length > 0 && (
               <ResponsiveContainer width="100%" height={200}>
@@ -695,13 +691,8 @@ export default function ResultsStage() {
           {/* Heatmap */}
           <div className="mb-4">
             <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Min temperature heatmap</p>
-              {!omHeatCells && (
-                <button onClick={loadOmHeatmap} disabled={omHeatLoading}
-                  className="text-xs px-2 py-1 rounded border border-[#2e3148] text-[#8b90a8] hover:border-[#4f8ef7] disabled:opacity-40 bg-transparent">
-                  {omHeatLoading ? "Loading…" : "▶ Load"}
-                </button>
-              )}
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Min temperature heatmap (15yr)</p>
+              {!omHeatCells && <span className="text-xs text-gray-400 animate-pulse">Loading…</span>}
             </div>
             {omHeatCells && omHeatCells.length > 0 && (() => {
               const years = [...new Set(omHeatCells.map((c) => c.year))].sort();

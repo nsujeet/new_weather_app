@@ -546,8 +546,8 @@ def process(req: ProcessRequest, token: str = Query(...), request: Request = Non
             "no_freeze_start": str(wr.no_freeze_start_date) if wr.no_freeze_start_date else None,
             "no_freeze_end":   str(wr.no_freeze_end_date)   if wr.no_freeze_end_date   else None,
         },
-        "hourly_df_json": psychro.hourly_dataframe.reset_index().to_json(date_format="iso"),
-        "df_winterization_json": proc.df_winterization.reset_index().to_json(date_format="iso"),
+        "hourly_df_json": psychro.hourly_dataframe.reset_index().to_json(orient="records", date_format="iso"),
+        "df_winterization_json": proc.df_winterization.reset_index().to_json(orient="records", date_format="iso"),
         "n_rows": len(psychro.hourly_dataframe),
     }
 
@@ -594,7 +594,7 @@ def psychrometric_chart(token: str, units: str = "F"):
     if not stored or "hourly_df_json" not in stored:
         return JSONResponse({"error": "Token not found"}, status_code=404)
 
-    df = pd.read_json(io.StringIO(stored["hourly_df_json"]))
+    df = pd.read_json(io.StringIO(stored["hourly_df_json"]), orient="records")
     df = df.rename(columns={"Tdb": "Tdb_F", "Twb": "Twb_F", "Tdp": "Tdp_F", "RH": "RH_percent"})
 
     from simple_psychrometric_chart import create_simple_psychrometric_chart
@@ -667,7 +667,7 @@ def scatter_data(token: str, units: str = "F"):
     if not stored or "hourly_df_json" not in stored:
         return JSONResponse({"error": "Token not found"}, status_code=404)
 
-    df = pd.read_json(io.StringIO(stored["hourly_df_json"]))
+    df = pd.read_json(io.StringIO(stored["hourly_df_json"]), orient="records")
     tdb_col = "Tdb"
     twb_col = "Twb"
     if tdb_col not in df.columns:
@@ -695,17 +695,14 @@ def heatmap_data(token: str, units: str = "F"):
     if not stored or "df_winterization_json" not in stored:
         return JSONResponse({"error": "Token not found"}, status_code=404)
 
-    dfw = pd.read_json(io.StringIO(stored["df_winterization_json"]))
-    # reset_index() names the datetime column after the index name ("DATE"),
-    # not "index" — detect and restore it correctly
-    date_col = next((c for c in ("DATE", "date", "index") if c in dfw.columns), None)
+    dfw = pd.read_json(io.StringIO(stored["df_winterization_json"]), orient="records")
+    # orient="records" always produces a "DATE" column from reset_index()
+    date_col = next((c for c in ("DATE", "date") if c in dfw.columns), None)
     if date_col:
-        dfw[date_col] = pd.to_datetime(dfw[date_col])
+        dfw[date_col] = pd.to_datetime(dfw[date_col], utc=True).dt.tz_localize(None)
         dfw = dfw.set_index(date_col)
-    else:
-        dfw.index = pd.to_datetime(dfw.index)
 
-    dfw["TMP_F"] = pd.to_numeric(dfw.get("TMP_F", pd.Series(dtype=float)), errors="coerce")
+    dfw["TMP_F"] = pd.to_numeric(dfw["TMP_F"] if "TMP_F" in dfw.columns else pd.Series(dtype=float), errors="coerce")
     dfw["year"]  = dfw.index.year
     dfw["month"] = dfw.index.month
 
@@ -733,15 +730,13 @@ def freezing_data(token: str, threshold_f: float = 36.0):
     if not stored or "df_winterization_json" not in stored:
         return JSONResponse({"error": "Token not found"}, status_code=404)
 
-    dfw = pd.read_json(io.StringIO(stored["df_winterization_json"]))
-    date_col = next((c for c in ("DATE", "date", "index") if c in dfw.columns), None)
+    dfw = pd.read_json(io.StringIO(stored["df_winterization_json"]), orient="records")
+    date_col = next((c for c in ("DATE", "date") if c in dfw.columns), None)
     if date_col:
-        dfw[date_col] = pd.to_datetime(dfw[date_col])
+        dfw[date_col] = pd.to_datetime(dfw[date_col], utc=True).dt.tz_localize(None)
         dfw = dfw.set_index(date_col)
-    else:
-        dfw.index = pd.to_datetime(dfw.index)
 
-    dfw["TMP_F"] = pd.to_numeric(dfw.get("TMP_F", pd.Series(dtype=float)), errors="coerce")
+    dfw["TMP_F"] = pd.to_numeric(dfw["TMP_F"] if "TMP_F" in dfw.columns else pd.Series(dtype=float), errors="coerce")
     dfw["below"] = dfw["TMP_F"] < threshold_f
     dfw["week"]  = dfw.index.isocalendar().week.astype(int)
 
@@ -815,8 +810,8 @@ def openmeteo_estimate(lat: float, lon: float, year_start: int = 2015, year_end:
     om_token = f"om_{lat}_{lon}_{year_start}_{year_end}"
     _result_store[om_token] = {
         "type": "om",
-        "hourly_df_json": psychro.hourly_dataframe.reset_index().to_json(date_format="iso"),
-        "df_winterization_json": proc.df_winterization.reset_index().to_json(date_format="iso"),
+        "hourly_df_json": psychro.hourly_dataframe.reset_index().to_json(orient="records", date_format="iso"),
+        "df_winterization_json": proc.df_winterization.reset_index().to_json(orient="records", date_format="iso"),
         "meta": {
             "station_name": f"ERA5 ({lat:.4f}, {lon:.4f})",
             "site_ele_ft": ele_m * 3.28084,
