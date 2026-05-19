@@ -255,8 +255,13 @@ export default function FilterStage() {
         onClick={handleConfirm}
         disabled={!selectedFilter || scoring || processing}
         className="wa-btn wa-btn-primary"
+        style={selectedFilter && !scoring && !processing ? {
+          background: "#4f8ef7",
+          boxShadow: "0 0 0 2px #4f8ef755, 0 4px 14px #4f8ef740",
+          transform: "translateY(-1px)",
+        } : undefined}
       >
-        {processing ? "Processing…" : `Run with ${selectedFilter ?? "…"} →`}
+        {processing ? "Processing…" : selectedFilter ? `✓ Run with ${selectedFilter} →` : "Select a filter to continue"}
       </button>
     </Card>
   );

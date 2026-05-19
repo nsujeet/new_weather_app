@@ -207,15 +207,26 @@ export default function FetchStage() {
         <div className="space-y-2">
           <button
             onClick={() => downloadCsv(token, selectedStation ?? "station")}
-            className="wa-btn wa-btn-outline" style={{ width: "100%" }}
+            className="wa-btn wa-btn-outline"
+            style={{
+              width: "100%",
+              border: "1px solid #4f8ef7",
+              color: "#4f8ef7",
+              background: "transparent",
+            }}
           >
             ⬇ Download merged CSV
           </button>
           <button
             onClick={() => advanceTo("filter")}
             className="wa-btn wa-btn-success"
+            style={{
+              background: "#22c55e",
+              boxShadow: "0 0 0 2px #22c55e55, 0 4px 14px #22c55e40",
+              transform: "translateY(-1px)",
+            }}
           >
-            Run Analysis →
+            ✓ Run Analysis →
           </button>
         </div>
       )}
