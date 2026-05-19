@@ -662,7 +662,7 @@ async def ashrae_conditions(request: dict):
 
 @router.get("/chart/scatter-data")
 def scatter_data(token: str, units: str = "F"):
-    """Return sampled hourly Tdb/Twb points for scatter chart."""
+    """Return all hourly Tdb/Twb points for scatter chart."""
     stored = _result_store.get(token)
     if not stored or "hourly_df_json" not in stored:
         return JSONResponse({"error": "Token not found"}, status_code=404)
@@ -677,13 +677,10 @@ def scatter_data(token: str, units: str = "F"):
         df[tdb_col] = (df[tdb_col] - 32) * 5 / 9
         df[twb_col] = (df[twb_col] - 32) * 5 / 9
 
-    # Sample down to ~300 points — prevents overlapping blob appearance
-    sample = df[[tdb_col, twb_col]].dropna()
-    if len(sample) > 300:
-        sample = sample.sample(300, random_state=42)
+    points = df[[tdb_col, twb_col]].dropna().rename(columns={tdb_col: "x", twb_col: "y"})
 
     return {
-        "points": sample.rename(columns={tdb_col: "x", twb_col: "y"}).to_dict(orient="records"),
+        "points": points.to_dict(orient="records"),
         "units": units.upper(),
     }
 

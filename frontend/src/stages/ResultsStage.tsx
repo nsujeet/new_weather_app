@@ -560,12 +560,12 @@ export default function ResultsStage() {
                   label={{ value: `Dry bulb (${sfx})`, position: "insideBottom", offset: -10 }} tick={{ fontSize: 11 }} />
                 <YAxis dataKey="y" name={`Twb (${sfx})`} type="number" domain={["auto","auto"]}
                   label={{ value: `Wet bulb (${sfx})`, angle: -90, position: "insideLeft" }} tick={{ fontSize: 11 }} />
-                <ZAxis range={[4, 4]} />
+                <ZAxis range={[2, 2]} />
                 <RCTooltip cursor={{ strokeDasharray: "3 3" }}
                   formatter={(v: number, n: string) => [`${v.toFixed(1)}${sfx}`, n]} />
                 <ReferenceLine x={nTdb ?? undefined} stroke="#00B050" strokeDasharray="4 2" />
                 <ReferenceLine y={nTwb ?? undefined} stroke="#00B050" strokeDasharray="4 2" />
-                <Scatter data={scatterPts} fill="#378ADD" fillOpacity={0.4} />
+                <Scatter data={scatterPts} fill="#378ADD" fillOpacity={0.15} />
               </ScatterChart>
             </ResponsiveContainer>
           )}
@@ -658,7 +658,7 @@ export default function ResultsStage() {
                     label={{ value: `Dry bulb (${sfx})`, position: "insideBottom", offset: -10 }} tick={{ fontSize: 11 }} />
                   <YAxis dataKey="y" name={`Twb (${sfx})`} type="number" domain={["auto","auto"]}
                     label={{ value: `Wet bulb (${sfx})`, angle: -90, position: "insideLeft" }} tick={{ fontSize: 11 }} />
-                  <ZAxis range={[4, 4]} />
+                  <ZAxis range={[2, 2]} />
                   <RCTooltip cursor={{ strokeDasharray: "3 3" }}
                     formatter={(v: number, n: string) => [`${v.toFixed(1)}${sfx}`, n]} />
                   <ReferenceLine x={omTdb ?? undefined} stroke="#10b981" strokeDasharray="4 2" />
