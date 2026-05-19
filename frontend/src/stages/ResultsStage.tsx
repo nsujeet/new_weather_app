@@ -140,9 +140,7 @@ export default function ResultsStage() {
   const [chartError,   setChartError]   = useState<string | null>(null);
   const [scatterPts,   setScatterPts]   = useState<{x:number;y:number}[]|null>(null);
   const [heatCells,    setHeatCells]    = useState<{month:string;year:number;value:number}[]|null>(null);
-  const [heatLoading,  setHeatLoading]  = useState(false);
   const [freezeBars,   setFreezeBars]   = useState<{week:number;hours:number}[]|null>(null);
-  const [freezeLoading,setFreezeLoading]= useState(false);
   const [showPct,      setShowPct]      = useState(false);
   const [showYearly,   setShowYearly]   = useState(false);
   const [showOm,       setShowOm]       = useState(false);
@@ -150,9 +148,7 @@ export default function ResultsStage() {
   // OM chart state
   const [omScatterPts,    setOmScatterPts]    = useState<{x:number;y:number}[]|null>(null);
   const [omHeatCells,     setOmHeatCells]     = useState<{month:string;year:number;value:number}[]|null>(null);
-  const [omHeatLoading,   setOmHeatLoading]   = useState(false);
   const [omFreezeBars,    setOmFreezeBars]    = useState<{week:number;hours:number}[]|null>(null);
-  const [omFreezeLoading, setOmFreezeLoading] = useState(false);
   const [omChartSrc,      setOmChartSrc]      = useState<string | null>(null);
   const [omChartLoading,  setOmChartLoading]  = useState(false);
 
@@ -244,35 +240,7 @@ export default function ResultsStage() {
     } finally { setChartLoading(false); }
   };
 
-  const loadHeatmap = async () => {
-    setHeatLoading(true);
-    try { const r = await getHeatmapData(token, units); setHeatCells(r.cells); }
-    catch { setHeatCells([]); }
-    finally { setHeatLoading(false); }
-  };
-
-  const loadFreezing = async () => {
-    setFreezeLoading(true);
-    try { const r = await getFreezingData(token); setFreezeBars(r.bars); }
-    catch { setFreezeBars([]); }
-    finally { setFreezeLoading(false); }
-  };
-
   const omToken = omResult?.om_token;
-  const loadOmHeatmap = async () => {
-    if (!omToken) return;
-    setOmHeatLoading(true);
-    try { const r = await getHeatmapData(omToken, units); setOmHeatCells(r.cells); }
-    catch { setOmHeatCells([]); }
-    finally { setOmHeatLoading(false); }
-  };
-  const loadOmFreezing = async () => {
-    if (!omToken) return;
-    setOmFreezeLoading(true);
-    try { const r = await getFreezingData(omToken); setOmFreezeBars(r.bars); }
-    catch { setOmFreezeBars([]); }
-    finally { setOmFreezeLoading(false); }
-  };
   const loadOmChart = async () => {
     if (!omToken) return;
     setOmChartLoading(true);

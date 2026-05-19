@@ -189,7 +189,6 @@ export default function WeatherScatter({
               color: mode === m ? "#a8c4ff" : "#8b90a8",
               fontSize: "11px", cursor: "pointer",
               fontWeight: mode === m ? 600 : 400,
-              border: `1px solid ${mode === m ? "#4f8ef7" : "#2e3148"}`,
             } as React.CSSProperties}
           >
             {m === "density" && loading ? "Loading…" : m === "scatter" ? "Scatter" : "Density"}
