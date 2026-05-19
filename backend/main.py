@@ -1,6 +1,7 @@
 """
 backend/main.py  — FastAPI entry point for new_weather_app
 """
+import logging
 import sys
 import os
 
@@ -11,6 +12,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from api.routes import router
+from api.auth_routes import router as auth_router
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(name)s %(levelname)s %(message)s",
+)
 
 app = FastAPI(title="Weather Analysis API", version="1.0.0")
 
@@ -23,6 +30,7 @@ app.add_middleware(
 )
 
 app.include_router(router, prefix="/api")
+app.include_router(auth_router, prefix="/api")
 
 
 @app.get("/health")

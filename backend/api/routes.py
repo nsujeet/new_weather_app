@@ -27,8 +27,10 @@ _years_cache: dict[str, _pd_cache.DataFrame] = {}
 import numpy as np
 import pandas as pd
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Request
 from fastapi.responses import StreamingResponse, JSONResponse
+
+from auth import get_current_user
 
 from api.models import (
     SiteConfirmRequest,
@@ -55,7 +57,7 @@ _result_store: dict[str, dict] = {}
 # ─────────────────────────────────────────────────────────────────
 
 @router.post("/chat")
-def chat_endpoint(request: dict):
+def chat_endpoint(request: dict, req: Request = None):
     import os
     import requests as _req
 
@@ -66,6 +68,13 @@ def chat_endpoint(request: dict):
     message  = request.get("message", "")
     history  = request.get("history", [])   # [{role, content}]
     context  = request.get("context", {})
+
+    try:
+        from utils.logger import log_event
+        email = get_current_user(req) if req else "unknown"
+        log_event(email, "agent_query", message[:200])
+    except Exception:
+        pass
 
     system = (
         "You are a concise technical assistant for a weather analysis pipeline. "
@@ -142,13 +151,20 @@ def geocode(q: str):
 
 
 @router.post("/site/confirm")
-def site_confirm(req: SiteConfirmRequest):
+def site_confirm(req: SiteConfirmRequest, request: Request = None):
     from pipeline.geo_utils import get_elevation_m, calc_pressure_psi, get_timezone_name, get_utc_offset_hours
 
     ele_m = get_elevation_m(req.lat, req.lon) or 0.0
     pressure_psi = calc_pressure_psi(ele_m)
     tz_name = get_timezone_name(req.lat, req.lon) or "Unknown"
     utc_offset = get_utc_offset_hours(req.lat, req.lon)
+
+    try:
+        from utils.logger import log_event
+        email = get_current_user(request) if request else "unknown"
+        log_event(email, "site_confirmed", f"{req.lat:.4f},{req.lon:.4f}")
+    except Exception:
+        pass
 
     return {
         "elevation_m": round(ele_m, 1),
@@ -353,7 +369,13 @@ async def _fetch_stream(req: FetchRequest) -> AsyncGenerator[str, None]:
 
 
 @router.post("/fetch")
-async def fetch_years(req: FetchRequest):
+async def fetch_years(req: FetchRequest, request: Request = None):
+    try:
+        from utils.logger import log_event
+        email = get_current_user(request) if request else "unknown"
+        log_event(email, "noaa_fetch", f"{req.station_id} years={req.years}")
+    except Exception:
+        pass
     return StreamingResponse(
         _fetch_stream(req),
         media_type="text/event-stream",
@@ -366,7 +388,7 @@ async def fetch_years(req: FetchRequest):
 # ─────────────────────────────────────────────────────────────────
 
 @router.post("/process")
-def process(req: ProcessRequest, token: str = Query(...)):
+def process(req: ProcessRequest, token: str = Query(...), request: Request = None):
     stored = _result_store.get(token)
     if not stored or stored.get("type") != "fetch":
         return JSONResponse({"error": "Token not found or expired"}, status_code=404)
@@ -470,6 +492,14 @@ def process(req: ProcessRequest, token: str = Query(...)):
         "df_winterization_json": proc.df_winterization.reset_index().to_json(date_format="iso"),
         "n_rows": len(psychro.hourly_dataframe),
     }
+
+    try:
+        from utils.logger import log_event
+        email = get_current_user(request) if request else "unknown"
+        meta_s = _result_store[result_token]["meta"]
+        log_event(email, "stage6_done", f"{meta_s.get('station_name','')} n={len(psychro.hourly_dataframe)}")
+    except Exception:
+        pass
 
     return {
         "result_token": result_token,

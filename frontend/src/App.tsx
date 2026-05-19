@@ -1,4 +1,4 @@
-import { Fragment } from "react";
+import { Fragment, useEffect, useState } from "react";
 import "./App.css";
 import { useStore } from "./store";
 import ChatPanel from "./components/ChatPanel";
@@ -144,11 +144,33 @@ const STAGE_LABELS: Partial<Record<StageName, string>> = {
 
 // ── Main app ──────────────────────────────────────────────────
 
+const BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000/api";
+
 export default function App() {
   const {
     stage, units, setUnits, reset,
     lat, selectedStation, selectedYears, fetchToken, selectedFilter, processResult,
   } = useStore();
+
+  const [userEmail, setUserEmail] = useState<string>("");
+
+  useEffect(() => {
+    fetch(`${BASE}/auth/me`, { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data?.email) {
+          setUserEmail(data.email);
+        } else if (import.meta.env.PROD) {
+          window.location.href = `${BASE}/auth/login`;
+        } else {
+          setUserEmail("dev@local");
+        }
+      })
+      .catch(() => {
+        if (import.meta.env.PROD) window.location.href = `${BASE}/auth/login`;
+        else setUserEmail("dev@local");
+      });
+  }, []);
 
   const stageIdx = STAGES.indexOf(stage);
 
@@ -203,6 +225,24 @@ export default function App() {
           >
             New analysis
           </button>
+          {userEmail && userEmail !== "dev@local" && (
+            <>
+              <span style={{ fontSize: "11px", color: "var(--wa-text-dim)", maxWidth: "160px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {userEmail}
+              </span>
+              <a
+                href={`${BASE}/auth/logout`}
+                style={{
+                  padding: "4px 10px", borderRadius: "6px",
+                  border: "1px solid var(--wa-border)", fontSize: "12px",
+                  background: "transparent", color: "var(--wa-text-dim)", cursor: "pointer",
+                  textDecoration: "none",
+                }}
+              >
+                Sign out
+              </a>
+            </>
+          )}
         </div>
       </header>
 
