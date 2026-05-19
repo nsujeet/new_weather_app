@@ -36,10 +36,12 @@ _INFO_URL  = "https://www.googleapis.com/oauth2/v3/userinfo"
 def _redirect_uri(request: Request) -> str:
     override = os.getenv("REDIRECT_URI", "")
     if override:
-        return override
-    # Auto-detect from incoming request (works on Railway + localhost)
-    base = str(request.base_url).rstrip("/")
-    return f"{base}/api/auth/callback"
+        return override.rstrip("/")
+    # Use forwarded headers so Railway's HTTPS proxy is detected correctly
+    # (request.base_url gives http:// because internal traffic is plain HTTP)
+    proto = request.headers.get("x-forwarded-proto", request.url.scheme)
+    host  = request.headers.get("x-forwarded-host") or request.headers.get("host") or request.url.netloc
+    return f"{proto}://{host}/api/auth/callback"
 
 
 @router.get("/login")
