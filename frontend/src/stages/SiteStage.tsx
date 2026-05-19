@@ -142,13 +142,14 @@ export default function SiteStage() {
         onClick={handleConfirm}
         disabled={loading}
         style={{
-          width: "100%", background: "var(--wa-accent)", color: "#fff",
+          width: "100%", background: "#4f8ef7", color: "#fff",
           border: "none", borderRadius: "8px", padding: "10px", fontSize: "13px",
           fontWeight: 600, cursor: loading ? "not-allowed" : "pointer",
-          opacity: loading ? 0.6 : 1, transition: "opacity 0.15s",
+          opacity: loading ? 0.6 : 1, transition: "all 0.15s",
+          ...(!loading ? { boxShadow: "0 0 0 2px #4f8ef755, 0 4px 14px #4f8ef740", transform: "translateY(-1px)" } : {}),
         }}
       >
-        {loading ? "Looking up site…" : "Confirm Site →"}
+        {loading ? "Looking up site…" : "✓ Confirm Site →"}
       </button>
     </Card>
   );

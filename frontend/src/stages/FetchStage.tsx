@@ -139,9 +139,15 @@ export default function FetchStage() {
           </p>
           <button
             onClick={handleFetch}
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg text-sm transition-colors"
+            className="w-full text-white font-medium py-2 px-4 rounded-lg text-sm transition-all"
+            style={{
+              background: "#4f8ef7",
+              boxShadow: "0 0 0 2px #4f8ef755, 0 4px 14px #4f8ef740",
+              transform: "translateY(-1px)",
+              border: "none",
+            }}
           >
-            Start Download
+            ⬇ Start Download
           </button>
         </>
       )}
