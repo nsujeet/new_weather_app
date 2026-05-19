@@ -285,6 +285,8 @@ def compute_winterization(
                 + datetime.timedelta(days=6)
             )
         except Exception as e:
+            import logging as _log
+            _log.getLogger(__name__).warning("No-freeze window failed: %s", e, exc_info=True)
             messages.append(f"No-freeze window calculation failed: {e}")
 
     result.qa = {

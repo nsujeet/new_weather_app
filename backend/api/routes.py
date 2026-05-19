@@ -637,9 +637,14 @@ def heatmap_data(token: str, units: str = "F"):
         return JSONResponse({"error": "Token not found"}, status_code=404)
 
     dfw = pd.read_json(io.StringIO(stored["df_winterization_json"]))
-    if "index" in dfw.columns:
-        dfw = dfw.set_index("index")
-    dfw.index = pd.to_datetime(dfw.index)
+    # reset_index() names the datetime column after the index name ("DATE"),
+    # not "index" — detect and restore it correctly
+    date_col = next((c for c in ("DATE", "date", "index") if c in dfw.columns), None)
+    if date_col:
+        dfw[date_col] = pd.to_datetime(dfw[date_col])
+        dfw = dfw.set_index(date_col)
+    else:
+        dfw.index = pd.to_datetime(dfw.index)
 
     dfw["TMP_F"] = pd.to_numeric(dfw.get("TMP_F", pd.Series(dtype=float)), errors="coerce")
     dfw["year"]  = dfw.index.year
@@ -670,9 +675,12 @@ def freezing_data(token: str, threshold_f: float = 36.0):
         return JSONResponse({"error": "Token not found"}, status_code=404)
 
     dfw = pd.read_json(io.StringIO(stored["df_winterization_json"]))
-    if "index" in dfw.columns:
-        dfw = dfw.set_index("index")
-    dfw.index = pd.to_datetime(dfw.index)
+    date_col = next((c for c in ("DATE", "date", "index") if c in dfw.columns), None)
+    if date_col:
+        dfw[date_col] = pd.to_datetime(dfw[date_col])
+        dfw = dfw.set_index(date_col)
+    else:
+        dfw.index = pd.to_datetime(dfw.index)
 
     dfw["TMP_F"] = pd.to_numeric(dfw.get("TMP_F", pd.Series(dtype=float)), errors="coerce")
     dfw["below"] = dfw["TMP_F"] < threshold_f
