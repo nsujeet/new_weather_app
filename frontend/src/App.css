@@ -1,0 +1,302 @@
+/* ── Shell ───────────────────────────────────────────────────── */
+
+.wa-app {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  overflow: hidden;
+  background: var(--wa-bg);
+  color: var(--wa-text);
+}
+
+/* ── Header ──────────────────────────────────────────────────── */
+
+.wa-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--wa-border);
+  background: var(--wa-surface);
+  flex-shrink: 0;
+}
+
+.wa-logo {
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--wa-accent);
+  letter-spacing: 0.04em;
+}
+
+/* ── Two-panel layout ────────────────────────────────────────── */
+
+.wa-panels {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* ── Left: Chat panel ────────────────────────────────────────── */
+
+.wa-chat {
+  width: 340px;
+  min-width: 280px;
+  max-width: 380px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--wa-border);
+  background: var(--wa-bg);
+}
+
+.wa-chat-header {
+  padding: 10px 14px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--wa-text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  border-bottom: 1px solid var(--wa-border);
+  flex-shrink: 0;
+}
+
+.wa-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.wa-empty-chat {
+  margin: auto;
+  color: var(--wa-text-muted);
+  text-align: center;
+  font-size: 12px;
+  padding: 32px 16px;
+  line-height: 1.8;
+}
+
+.wa-bubble {
+  max-width: 94%;
+  border-radius: 10px;
+  padding: 8px 12px;
+  font-size: 12px;
+  line-height: 1.6;
+  border: 1px solid var(--wa-border);
+  white-space: pre-wrap;
+}
+
+.wa-bubble-user {
+  align-self: flex-end;
+  background: var(--wa-accent-dim);
+  border-color: #2a4a8a;
+  color: var(--wa-text);
+}
+
+.wa-bubble-assistant {
+  align-self: flex-start;
+  background: var(--wa-surface);
+  color: var(--wa-text);
+}
+
+.wa-bubble-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--wa-text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 3px;
+}
+
+.wa-chat-input-row {
+  padding: 10px 12px;
+  border-top: 1px solid var(--wa-border);
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+  background: var(--wa-surface);
+}
+
+.wa-chat-input {
+  flex: 1;
+  background: var(--wa-bg);
+  border: 1px solid var(--wa-border);
+  border-radius: 8px;
+  padding: 7px 12px;
+  font-size: 13px;
+  color: var(--wa-text);
+  resize: none;
+  outline: none;
+  font-family: inherit;
+  line-height: 1.4;
+  max-height: 100px;
+}
+
+.wa-chat-input:focus { border-color: var(--wa-accent); }
+.wa-chat-input::placeholder { color: var(--wa-text-muted); }
+
+.wa-send-btn {
+  background: var(--wa-accent);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 7px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: opacity 0.15s;
+}
+.wa-send-btn:disabled { opacity: 0.4; cursor: default; }
+
+.wa-suggestions {
+  padding: 8px 12px 4px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  border-top: 1px solid var(--wa-border);
+  flex-shrink: 0;
+}
+
+.wa-suggestion-chip {
+  background: var(--wa-surface);
+  border: 1px solid var(--wa-border);
+  border-radius: 14px;
+  padding: 3px 10px;
+  font-size: 11px;
+  color: var(--wa-text-dim);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+  text-align: left;
+}
+.wa-suggestion-chip:hover { border-color: var(--wa-accent); color: var(--wa-accent); }
+
+/* ── Right: Canvas panel ─────────────────────────────────────── */
+
+.wa-canvas {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--wa-bg);
+}
+
+.wa-canvas-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 24px 40px;
+}
+
+/* ── Completed step row ──────────────────────────────────────── */
+
+.wa-step-done {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--wa-surface-2);
+  border: 1px solid var(--wa-border);
+  border-radius: 10px;
+  margin-bottom: 6px;
+}
+
+.wa-step-done-meta { flex: 1; min-width: 0; }
+
+.wa-step-done-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--wa-text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+
+.wa-step-done-summary {
+  font-size: 12px;
+  color: var(--wa-text);
+  margin-top: 1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wa-rewind-btn {
+  font-size: 11px;
+  color: var(--wa-accent);
+  background: none;
+  border: 1px solid var(--wa-border);
+  border-radius: 5px;
+  padding: 3px 10px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: border-color 0.15s;
+}
+.wa-rewind-btn:hover { border-color: var(--wa-accent); }
+
+/* ── Stage divider ───────────────────────────────────────────── */
+
+.wa-stage-divider {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0 14px;
+  color: var(--wa-text-muted);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.wa-stage-divider::before,
+.wa-stage-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--wa-border);
+}
+
+/* ── Dark theme overrides for stage components ───────────────── */
+
+.wa-canvas input[type="text"],
+.wa-canvas input[type="number"],
+.wa-canvas textarea {
+  background: var(--wa-bg) !important;
+  border-color: var(--wa-border) !important;
+  color: var(--wa-text) !important;
+}
+
+.wa-canvas input::placeholder,
+.wa-canvas textarea::placeholder {
+  color: var(--wa-text-muted) !important;
+}
+
+.wa-canvas input:focus,
+.wa-canvas textarea:focus {
+  border-color: var(--wa-accent) !important;
+  box-shadow: 0 0 0 2px rgba(79,142,247,0.15) !important;
+}
+
+.wa-canvas .bg-gray-50  { background-color: var(--wa-surface-2) !important; }
+.wa-canvas .bg-gray-100 { background-color: var(--wa-bg) !important; }
+.wa-canvas .bg-gray-200 { background-color: var(--wa-border) !important; }
+
+.wa-canvas .border-gray-100 { border-color: var(--wa-border) !important; }
+.wa-canvas .border-gray-200 { border-color: var(--wa-border) !important; }
+.wa-canvas .border-gray-300 { border-color: var(--wa-border-2) !important; }
+
+.wa-canvas .text-gray-800 { color: var(--wa-text) !important; }
+.wa-canvas .text-gray-700 { color: var(--wa-text) !important; }
+.wa-canvas .text-gray-600 { color: var(--wa-text-dim) !important; }
+.wa-canvas .text-gray-500 { color: var(--wa-text-dim) !important; }
+.wa-canvas .text-gray-400 { color: var(--wa-text-muted) !important; }
+.wa-canvas .text-gray-300 { color: var(--wa-border-2) !important; }
+
+.wa-canvas .text-blue-600 { color: var(--wa-accent) !important; }
+.wa-canvas .text-blue-700 { color: var(--wa-accent) !important; }
+
+/* Mobile */
+@media (max-width: 640px) {
+  .wa-chat { display: none; }
+}

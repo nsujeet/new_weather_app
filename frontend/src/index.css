@@ -1,0 +1,33 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --wa-bg:         #0f1117;
+  --wa-surface:    #1a1d27;
+  --wa-surface-2:  #141720;
+  --wa-border:     #2e3148;
+  --wa-border-2:   #3e4160;
+  --wa-accent:     #4f8ef7;
+  --wa-accent-dim: #1e2a4a;
+  --wa-text:       #e8eaf0;
+  --wa-text-dim:   #8b90a8;
+  --wa-text-muted: #4a5070;
+}
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  background: var(--wa-bg);
+  color: var(--wa-text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  width: 100%;
+  text-align: left;
+}

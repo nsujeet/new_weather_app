@@ -1,0 +1,16 @@
+fastapi>=0.111.0
+uvicorn[standard]>=0.29.0
+aiofiles>=23.0
+pydantic>=2.0
+numpy
+pandas
+psychrolib
+openmeteo-requests
+requests-cache
+retry-requests
+timezonefinder
+pytz
+geopy
+tabulate
+matplotlib
+scipy
