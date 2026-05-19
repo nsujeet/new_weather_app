@@ -142,15 +142,17 @@
   background: var(--wa-accent);
   color: #fff;
   border: none;
-  border-radius: 8px;
-  padding: 7px 14px;
+  border-radius: 20px;
+  padding: 7px 16px;
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
   flex-shrink: 0;
+  outline: none;
   transition: opacity 0.15s;
 }
 .wa-send-btn:disabled { opacity: 0.4; cursor: default; }
+.wa-send-btn:focus { outline: none; }
 
 .wa-suggestions {
   padding: 8px 12px 4px;
@@ -295,6 +297,34 @@
 
 .wa-canvas .text-blue-600 { color: var(--wa-accent) !important; }
 .wa-canvas .text-blue-700 { color: var(--wa-accent) !important; }
+
+/* ── Shared button styles ─────────────────────────────────────── */
+
+.wa-btn {
+  width: 100%;
+  border: none;
+  border-radius: 20px;
+  padding: 10px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  outline: none;
+  transition: opacity 0.15s;
+  font-family: inherit;
+}
+.wa-btn:focus { outline: none; }
+.wa-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.wa-btn:hover:not(:disabled) { opacity: 0.88; }
+
+.wa-btn-primary { background: var(--wa-accent); color: #fff; }
+.wa-btn-success  { background: #22c55e; color: #fff; }
+.wa-btn-outline  {
+  background: transparent;
+  color: var(--wa-text-dim);
+  border: 1px solid var(--wa-border);
+  width: auto;
+}
+.wa-btn-outline:hover:not(:disabled) { border-color: var(--wa-accent); color: var(--wa-accent); opacity: 1; }
 
 /* Mobile */
 @media (max-width: 640px) {
