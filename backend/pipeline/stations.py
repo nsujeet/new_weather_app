@@ -102,12 +102,15 @@ def find_nearest_stations(
     Find the n nearest stations to a site, ranked by combined
     distance + elevation score.
 
+    Always returns n stations — no hard radius cap. max_miles is kept
+    for backwards compatibility but is no longer used as a filter.
+
     Args:
         site_lat:         site latitude (decimal degrees)
         site_lon:         site longitude (decimal degrees)
         site_elevation_m: site elevation in metres
         stations_df:      loaded station list from load_station_list()
-        max_miles:        search radius (default 75mi)
+        max_miles:        unused (kept for API compat)
         n:                number of results to return (default 5)
 
     Returns:
@@ -127,12 +130,6 @@ def find_nearest_stations(
         df["LATITUDE"].values,
         df["LONGITUDE"].values,
     )
-
-    # filter to search radius
-    df = df[df["dist_miles"] <= max_miles].copy()
-
-    if df.empty:
-        return pd.DataFrame()
 
     # elevation delta
     df["elev_delta_m"]  = (df["ELEVATION"] - site_elevation_m).abs()
