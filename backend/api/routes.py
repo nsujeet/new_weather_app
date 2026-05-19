@@ -47,6 +47,11 @@ router = APIRouter()
 # Replace with Redis or DB for multi-worker prod deployment
 _result_store: dict[str, dict] = {}
 
+# ── per-user chat token budget (resets on server restart) ────────
+# Prevents a single user from running up large API bills.
+_CHAT_TOKEN_LIMIT = int(os.getenv("CHAT_TOKEN_LIMIT", "50000"))  # ~$0.05 at Haiku pricing
+_user_tokens: dict[str, int] = {}   # email → cumulative input tokens used
+
 
 # ─────────────────────────────────────────────────────────────────
 #  /site/confirm  — elevation + pressure + Open-Meteo
@@ -68,24 +73,38 @@ def chat_endpoint(request: dict, req: Request = None):
     message  = request.get("message", "")
     history  = request.get("history", [])   # [{role, content}]
     context  = request.get("context", {})
+    stage    = context.get("stage", "unknown")
 
     try:
         from utils.logger import log_event
         email = get_current_user(req) if req else "unknown"
-        log_event(email, "agent_query", message[:200])
     except Exception:
-        pass
+        email = "unknown"
+
+    # ── per-user token budget check ───────────────────────────────
+    used = _user_tokens.get(email, 0)
+    if used >= _CHAT_TOKEN_LIMIT:
+        return JSONResponse(
+            {"error": f"Chat limit reached for this session ({_CHAT_TOKEN_LIMIT:,} tokens). Please contact the app owner."},
+            status_code=429,
+        )
 
     system = (
-        "You are a concise technical assistant for a weather analysis pipeline. "
-        "You help engineers understand design conditions, NOAA station data, ASHRAE comparisons, "
-        "psychrometrics, and data quality. Be brief and direct — 2-4 sentences unless more is needed.\n\n"
-        f"Current analysis state:\n{json.dumps(context, indent=2, default=str)}"
+        "You are a technical assistant embedded in a weather analysis tool. "
+        "You ONLY answer questions directly related to: weather data, NOAA stations, ASHRAE design conditions, "
+        "psychrometrics, ERA5/Open-Meteo data, site elevation/pressure, data quality, freezing analysis, "
+        "or how to use this specific app. "
+        "If the user asks about ANYTHING else (coding, general knowledge, current events, other tools, etc.), "
+        "respond with exactly: 'I can only help with weather analysis questions for this app.' "
+        "Be concise — 2-4 sentences unless a technical explanation requires more.\n\n"
+        f"Current app state: stage={stage}\n{json.dumps(context, indent=2, default=str)}"
     )
 
     messages = [*history[-8:], {"role": "user", "content": message}]
 
     def generator():
+        reply_chunks = []
+        tokens_used = 0
         try:
             resp = _req.post(
                 "https://api.anthropic.com/v1/messages",
@@ -112,11 +131,30 @@ def chat_endpoint(request: dict, req: Request = None):
                         if parsed.get("type") == "content_block_delta":
                             text = parsed.get("delta", {}).get("text", "")
                             if text:
+                                reply_chunks.append(text)
                                 yield f"data: {json.dumps({'text': text})}\n\n"
+                        elif parsed.get("type") == "message_delta":
+                            # usage appears in the final message_delta event
+                            usage = parsed.get("usage", {})
+                            tokens_used = usage.get("output_tokens", 0)
+                        elif parsed.get("type") == "message_start":
+                            usage = parsed.get("message", {}).get("usage", {})
+                            tokens_used += usage.get("input_tokens", 0)
                     except Exception:
                         pass
         except Exception as e:
             yield f"data: {json.dumps({'text': f'Error: {e}'})}\n\n"
+        finally:
+            # Update per-user token budget
+            if tokens_used > 0:
+                _user_tokens[email] = _user_tokens.get(email, 0) + tokens_used
+            # Log Q&A to stdout + Sheets
+            reply_preview = "".join(reply_chunks)[:200]
+            try:
+                log_event(email, "agent_query",
+                          f"[{stage}] tokens={tokens_used} Q: {message[:100]} | A: {reply_preview[:100]}")
+            except Exception:
+                pass
         yield f"data: {json.dumps({'done': True})}\n\n"
 
     return StreamingResponse(
