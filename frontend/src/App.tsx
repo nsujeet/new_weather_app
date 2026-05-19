@@ -280,6 +280,19 @@ export default function App() {
           </div>
         </div>
       </div>
+
+      {/* Footer */}
+      <footer style={{
+        textAlign: "center", padding: "10px 16px",
+        fontSize: "11px", color: "var(--wa-text-dim)",
+        borderTop: "1px solid var(--wa-border)",
+        background: "var(--wa-bg)",
+      }}>
+        NOAA Weather Analysis Tool &nbsp;·&nbsp; For help contact&nbsp;
+        <a href="mailto:nsujeet@gmail.com" style={{ color: "var(--wa-accent)", textDecoration: "none" }}>
+          nsujeet@gmail.com
+        </a>
+      </footer>
     </div>
   );
 }
