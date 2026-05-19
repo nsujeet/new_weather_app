@@ -33,6 +33,8 @@ export interface AshraStation {
   station: string;
   dist_miles: number;
   elev_ft?: number;
+  lat?: number;
+  lon?: number;
 }
 
 export interface StationsResult {

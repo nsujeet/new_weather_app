@@ -38,6 +38,7 @@ interface Props {
 export default function SiteMap({
   siteLat, siteLon,
   noaaStations = [],
+  ashraStations = [],
   selectedStation,
   onSelectStation,
 }: Props) {
@@ -60,32 +61,48 @@ export default function SiteMap({
         <Circle
           center={[siteLat, siteLon]}
           radius={30 * MILES_TO_METERS}
-          pathOptions={{ color: "#3b82f6", fillOpacity: 0.04, weight: 1, dashArray: "4 4" }}
+          pathOptions={{ color: "#14b8a6", fillOpacity: 0.04, weight: 1.5, dashArray: "6 4" }}
         />
 
-        {/* Site marker */}
-        <Marker position={[siteLat, siteLon]}>
-          <Popup>
-            <strong>Site</strong><br />
-            {siteLat.toFixed(5)}, {siteLon.toFixed(5)}
-          </Popup>
-        </Marker>
+        {/* ASHRAE stations (rendered below NOAA so NOAA is on top) */}
+        {ashraStations.map((s) => {
+          if (s.lat == null || s.lon == null) return null;
+          return (
+            <CircleMarker
+              key={s.wmo}
+              center={[s.lat, s.lon]}
+              radius={9}
+              pathOptions={{
+                color: "#fff",
+                weight: 2,
+                fillColor: "#f97316",
+                fillOpacity: 0.9,
+              }}
+            >
+              <Popup>
+                <strong>{s.station}</strong><br />
+                WMO {s.wmo}<br />
+                {s.dist_miles?.toFixed(1)} mi · {s.elev_ft?.toFixed(0)} ft
+              </Popup>
+            </CircleMarker>
+          );
+        })}
 
         {/* NOAA station circles */}
         {noaaStations.map((s) => {
           if (s.LATITUDE == null || s.LONGITUDE == null) return null;
           const isSelected = s.GHCN_ID === selectedStation;
-          const color = STATUS_COLOR[s.recommendation_status ?? ""] ?? "#9ca3af";
+          const fill = isSelected ? "#3b82f6" : (STATUS_COLOR[s.recommendation_status ?? ""] ?? "#9ca3af");
           return (
             <CircleMarker
               key={s.GHCN_ID}
               center={[s.LATITUDE, s.LONGITUDE]}
-              radius={isSelected ? 10 : 7}
+              radius={isSelected ? 11 : 8}
               pathOptions={{
-                color: isSelected ? "#1d4ed8" : color,
-                fillColor: isSelected ? "#3b82f6" : color,
-                fillOpacity: 0.8,
-                weight: isSelected ? 2 : 1,
+                color: "#fff",
+                weight: isSelected ? 2.5 : 1.5,
+                fillColor: fill,
+                fillOpacity: 0.95,
               }}
               eventHandlers={{
                 click: () => onSelectStation?.(s.GHCN_ID),
@@ -105,9 +122,17 @@ export default function SiteMap({
             </CircleMarker>
           );
         })}
+
+        {/* Site marker on top */}
+        <Marker position={[siteLat, siteLon]}>
+          <Popup>
+            <strong>Site</strong><br />
+            {siteLat.toFixed(5)}, {siteLon.toFixed(5)}
+          </Popup>
+        </Marker>
       </MapContainer>
       <p className="text-xs text-gray-400 px-2 py-1">
-        🔵 selected · 🟢 recommended · 🟡 acceptable · 🔴 poor · dashed = 30 mi radius
+        🔵 NOAA stations · 🟠 ASHRAE stations · Select a NOAA station — ASHRAE shown for comparison only.
       </p>
     </div>
   );

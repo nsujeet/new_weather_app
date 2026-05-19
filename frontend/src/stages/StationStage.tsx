@@ -355,7 +355,7 @@ export default function StationStage() {
       {lat != null && lon != null && (
         <div className="mb-4">
           <Suspense fallback={<div className="h-[340px] rounded-lg border border-gray-200 flex items-center justify-center text-xs text-gray-400">Loading map…</div>}>
-            <SiteMap siteLat={lat} siteLon={lon} noaaStations={noaaStations} selectedStation={selectedStation} onSelectStation={selectStation} />
+            <SiteMap siteLat={lat} siteLon={lon} noaaStations={noaaStations} ashraStations={ashraStations} selectedStation={selectedStation} onSelectStation={selectStation} />
           </Suspense>
         </div>
       )}
