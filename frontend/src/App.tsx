@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useState } from "react";
 import "./App.css";
 import { useStore } from "./store";
+import type { AppState } from "./store";
 import ChatPanel from "./components/ChatPanel";
 import SiteStage from "./stages/SiteStage";
 import StationStage from "./stages/StationStage";
@@ -122,23 +123,70 @@ function FilterDoneCard() {
 
 // ── Stage suggestions for chat ────────────────────────────────
 
-function getSuggestions(stage: StageName): string[] {
+function getSuggestions(stage: StageName, s: AppState): string[] {
+  const sfx = s.units === "C" ? "°C" : "°F";
   switch (stage) {
-    case "site":    return ["How does elevation affect pressure?", "What coordinates format do you use?"];
-    case "station": return ["Why prefer closer stations?", "What does the recommendation color mean?", "How are ASHRAE stations selected?"];
-    case "years":   return ["How many years should I select?", "Why are some years unavailable?"];
-    case "fetch":   return ["What data does NOAA provide?", "Why might a year have fewer rows?"];
-    case "filter":  return ["What is FM-15 filter?", "Which filter should I pick?", "What do quality codes mean?"];
-    case "results": return ["Explain 1% exceedance", "Why is ASHRAE different from NOAA?", "What is MCWB?", "Explain the winterization window"];
-    default:        return [];
+    case "site":
+      return [
+        "How does elevation affect pressure?",
+        "What coordinates format do you accept?",
+      ];
+    case "station": {
+      const sel = s.noaaStations.find((n) => n.GHCN_ID === s.selectedStation);
+      const dist = sel?.dist_miles != null ? `${sel.dist_miles.toFixed(1)} mi away` : null;
+      return [
+        sel ? `Why is ${sel.NAME} recommended?` : "Why prefer closer stations?",
+        dist ? `Is ${dist} too far for reliable data?` : "What distance is too far for a station?",
+        "How are ASHRAE reference stations selected?",
+      ];
+    }
+    case "years": {
+      const n = s.selectedYears.length;
+      return [
+        n > 0 ? `Is ${n} years of data enough for design conditions?` : "How many years should I select?",
+        "Why are some years greyed out?",
+        "Does more historical data always improve accuracy?",
+      ];
+    }
+    case "fetch":
+      return [
+        "What measurements does NOAA ISD provide?",
+        "Why might a year have fewer rows than expected?",
+        "What is the difference between NOAA and ERA5?",
+      ];
+    case "filter": {
+      const f = s.selectedFilter;
+      return [
+        f ? `What is the "${f}" filter and when should I use it?` : "What is the FM-15 filter?",
+        "Which filter gives the most conservative design conditions?",
+        "What do NOAA quality codes 2 and 3 mean?",
+      ];
+    }
+    case "results": {
+      const dc = s.processResult?.design_conditions as Record<string, unknown> | undefined;
+      const stats = (dc?.Stats ?? []) as Record<string, unknown>[];
+      const row1 = stats.find((r) => Number(r["%"]) === 1);
+      const dbCol = s.units === "C" ? "DB_C" : "DB_F";
+      const tdb = row1 ? Number(row1[dbCol]) : null;
+      const station = s.processResult?.meta.station_name ?? null;
+      return [
+        tdb != null ? `Why is the 1% dry bulb ${tdb.toFixed(1)}${sfx} — is that typical?` : "Explain 1% exceedance",
+        station ? `How reliable is ${station} for this analysis?` : "Why is ASHRAE different from NOAA?",
+        "What is MCWB and how does it affect chiller sizing?",
+        "Explain the no-freeze winterization window",
+      ];
+    }
+    default:
+      return [];
   }
 }
 
 // Suggestion chips shown in the right canvas above the active stage.
 // Clicking sends the question directly to the chat panel via the store.
 function CanvasSuggestions({ stage }: { stage: StageName }) {
-  const { setPendingChatMessage } = useStore();
-  const chips = getSuggestions(stage);
+  const store = useStore();
+  const { setPendingChatMessage } = store;
+  const chips = getSuggestions(stage, store);
   if (chips.length === 0) return null;
   return (
     <div style={{
@@ -185,10 +233,11 @@ const STAGE_LABELS: Partial<Record<StageName, string>> = {
 const BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000/api";
 
 export default function App() {
+  const appStore = useStore();
   const {
     stage, units, setUnits, reset,
     lat, selectedStation, selectedYears, fetchToken, selectedFilter, processResult,
-  } = useStore();
+  } = appStore;
 
   const [userEmail, setUserEmail] = useState<string>("");
 
@@ -287,7 +336,7 @@ export default function App() {
       {/* Two-panel body */}
       <div className="wa-panels">
         <div className="wa-chat">
-          <ChatPanel suggestions={getSuggestions(stage)} />
+          <ChatPanel suggestions={getSuggestions(stage, appStore)} />
         </div>
 
         <div className="wa-canvas">
