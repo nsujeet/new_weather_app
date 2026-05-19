@@ -250,7 +250,7 @@ export default function StationStage() {
                           <XAxis dataKey="x" name={`Tdb (${sfx})`} type="number" domain={["auto","auto"]} tick={{ fontSize: 10, fill: "#8b90a8" }} label={{ value: `Tdb (${sfx})`, position: "insideBottom", offset: -2, fontSize: 10, fill: "#8b90a8" }} />
                           <YAxis dataKey="y" name={`Twb (${sfx})`} type="number" domain={["auto","auto"]} tick={{ fontSize: 10, fill: "#8b90a8" }} />
                           <RCTooltip cursor={{ strokeDasharray: "3 3" }} contentStyle={{ background: "#1a1d27", border: "1px solid #2e3148", fontSize: 11 }} formatter={(v: number) => v.toFixed(1)} />
-                          <Scatter data={scatterPoints} fill="#4f8ef7" opacity={0.6} r={3} />
+                          <Scatter data={scatterPoints} fill="#4f8ef7" opacity={0.8} r={2} />
                         </ScatterChart>
                       </ResponsiveContainer>
                     )}

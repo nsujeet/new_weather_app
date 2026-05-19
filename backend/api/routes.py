@@ -182,19 +182,30 @@ def site_confirm(req: SiteConfirmRequest, request: Request = None):
 
 @router.get("/stations")
 def get_stations(lat: float, lon: float, elevation_m: float = 0.0):
-    from pipeline.stations import load_station_list, find_nearest_stations, recommend_station
     from pipeline.ashrae import get_ashrae_wmo
 
-    sdf = load_station_list()
-    ranked = find_nearest_stations(lat, lon, elevation_m, sdf, n=10)
-    rec = recommend_station(ranked)
-
+    # ASHRAE lookup is independent — always return it even if NOAA lookup fails
     ashrae = get_ashrae_wmo(lat, lon, n_stations=5).get("stations", [])
 
+    try:
+        from pipeline.stations import load_station_list, find_nearest_stations, recommend_station
+        sdf    = load_station_list()
+        ranked = find_nearest_stations(lat, lon, elevation_m, sdf, n=10)
+        rec    = recommend_station(ranked)
+        noaa   = ranked.to_dict(orient="records")
+        rec_id = rec.get("station_id")
+        rec_msg = rec.get("message", "")
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning("NOAA station lookup failed: %s", e)
+        noaa    = []
+        rec_id  = None
+        rec_msg = f"Station lookup unavailable: {e}"
+
     return {
-        "noaa": ranked.to_dict(orient="records"),
-        "recommended_station_id": rec.get("station_id"),
-        "recommendation_message": rec.get("message"),
+        "noaa": noaa,
+        "recommended_station_id": rec_id,
+        "recommendation_message": rec_msg,
         "ashrae": ashrae,
     }
 
@@ -619,10 +630,10 @@ def scatter_data(token: str, units: str = "F"):
         df[tdb_col] = (df[tdb_col] - 32) * 5 / 9
         df[twb_col] = (df[twb_col] - 32) * 5 / 9
 
-    # Sample down to ~600 points — fewer overlapping circles = crisp scatter
+    # Sample down to ~300 points — prevents overlapping blob appearance
     sample = df[[tdb_col, twb_col]].dropna()
-    if len(sample) > 600:
-        sample = sample.sample(600, random_state=42)
+    if len(sample) > 300:
+        sample = sample.sample(300, random_state=42)
 
     return {
         "points": sample.rename(columns={tdb_col: "x", twb_col: "y"}).to_dict(orient="records"),
