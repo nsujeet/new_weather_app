@@ -230,6 +230,13 @@ export default function ResultsStage() {
 
   const token = processResult.result_token;
 
+  // Derive actual data window label from heatmap cells (both NOAA and OM)
+  const dataWindowLabel = (cells: typeof heatCells) => {
+    if (!cells || cells.length === 0) return null;
+    const years = [...new Set(cells.map((c) => c.year))].sort();
+    return years.length > 1 ? `${years[0]}–${years[years.length - 1]}` : String(years[0]);
+  };
+
   const loadChart = async () => {
     setChartLoading(true); setChartError(null);
     try {
@@ -512,7 +519,9 @@ export default function ResultsStage() {
         {/* Freezing bar */}
         <div className="mb-4">
           <div className="flex items-center justify-between mb-2">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Freezing hours per ISO week (15yr)</p>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+              Freezing hours per ISO week{dataWindowLabel(heatCells) ? ` (${dataWindowLabel(heatCells)})` : ""}
+            </p>
             {!freezeBars && <span className="text-xs text-gray-400 animate-pulse">Loading…</span>}
           </div>
           {freezeBars && freezeBars.length > 0 && (
@@ -531,7 +540,9 @@ export default function ResultsStage() {
         {/* Min temp heatmap */}
         <div>
           <div className="flex items-center justify-between mb-2">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Min temperature heatmap (15yr)</p>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+              Min temperature heatmap{dataWindowLabel(heatCells) ? ` (${dataWindowLabel(heatCells)})` : ""}
+            </p>
             {!heatCells && <span className="text-xs text-gray-400 animate-pulse">Loading…</span>}
           </div>
           {heatCells && heatCells.length > 0 && (() => {
@@ -594,7 +605,9 @@ export default function ResultsStage() {
           {/* Freezing bar */}
           <div className="mb-4">
             <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Freezing hours per ISO week (15yr)</p>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                Freezing hours per ISO week{dataWindowLabel(omHeatCells) ? ` (${dataWindowLabel(omHeatCells)})` : ""}
+              </p>
               {!omFreezeBars && <span className="text-xs text-gray-400 animate-pulse">Loading…</span>}
             </div>
             {omFreezeBars && omFreezeBars.length > 0 && (
@@ -613,7 +626,9 @@ export default function ResultsStage() {
           {/* Heatmap */}
           <div className="mb-4">
             <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Min temperature heatmap (15yr)</p>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                Min temperature heatmap{dataWindowLabel(omHeatCells) ? ` (${dataWindowLabel(omHeatCells)})` : ""}
+              </p>
               {!omHeatCells && <span className="text-xs text-gray-400 animate-pulse">Loading…</span>}
             </div>
             {omHeatCells && omHeatCells.length > 0 && (() => {

@@ -170,7 +170,7 @@ export default function WeatherScatter({
     },
     scales: {
       x: { ...BASE_SCALES(sfx).x, type: "linear" as const, offset: true },
-      y: { ...BASE_SCALES(sfx).y, type: "linear" as const, offset: true },
+      y: { ...BASE_SCALES(sfx).y, type: "linear" as const, offset: true, reverse: false },
     },
   };
 
