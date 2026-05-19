@@ -3,7 +3,7 @@
  */
 import { useEffect, useState, Suspense, lazy } from "react";
 import { useStore } from "../store";
-import { getStations, getAshraConditions, getPsychroChart, getScatterData, getHeatmapData, getFreezingData } from "../api";
+import { getStations, getAshraConditions, getPsychroChart, getScatterData, getHeatmapData, getFreezingData, getOpenMeteo } from "../api";
 import type { AshraConditionResult, OmStat } from "../api";
 import Card from "../components/Card";
 import {
@@ -45,6 +45,7 @@ export default function StationStage() {
     ashraEdition: edition, ashraLevel: acfLevel,
     omResult, omLoading, omError,
     setStations, selectStation, setAshraConditions, setAshraEdition: setEdition, setAshraLevel: setAcfLevel, advanceTo,
+    setOmResult, setOmLoading, setOmError,
   } = useStore();
 
   const [loading,      setLoading]      = useState(false);
@@ -53,6 +54,33 @@ export default function StationStage() {
 
   // ERA5 quick-estimate section
   const [era5Open,       setEra5Open]       = useState(true);
+  const [chartError,     setChartError]     = useState<string | null>(null);
+
+  // Resolve a valid om_token — refetches ERA5 if server was restarted and token expired
+  const resolveOmToken = async (): Promise<string | null> => {
+    if (omResult?.om_token) {
+      // Quick probe: try to fetch 1-row scatter; if 404 fall through to refetch
+      try {
+        await getScatterData(omResult.om_token, units);
+        return omResult.om_token;
+      } catch { /* token expired — fall through */ }
+    }
+    if (lat == null || lon == null) return null;
+    setChartError(null);
+    setOmLoading(true);
+    try {
+      const omEnd   = new Date().getFullYear() - 1;
+      const omStart = omEnd - 14;
+      const fresh = await getOpenMeteo(lat, lon, omStart, omEnd, units);
+      setOmResult(fresh);
+      setOmLoading(false);
+      return fresh.om_token ?? null;
+    } catch (e) {
+      setOmError(e instanceof Error ? e.message : "ERA5 refetch failed");
+      setOmLoading(false);
+      return null;
+    }
+  };
   const [scatterPoints,  setScatterPoints]  = useState<{x: number; y: number}[] | null>(null);
   const [scatterLoading, setScatterLoading] = useState(false);
   const [psychroB64,     setPsychroB64]     = useState<string | null>(null);
@@ -192,11 +220,26 @@ export default function StationStage() {
                     </div>
                   )}
 
+                  {/* Chart error */}
+                  {chartError && (
+                    <p className="text-xs text-red-400 mb-2 px-1">{chartError}</p>
+                  )}
+
                   {/* Scatter chart */}
                   <div className="mb-3">
                     <div className="flex items-center justify-between mb-1">
                       <span className="text-xs font-semibold text-gray-400">Weather scatter — Tdb vs Twb</span>
-                      <button onClick={async () => { if (scatterPoints) { setScatterPoints(null); return; } if (!omResult.om_token) return; setScatterLoading(true); try { const d = await getScatterData(omResult.om_token, units); setScatterPoints(d.points); } catch { /* ignore */ } finally { setScatterLoading(false); } }} className="text-xs px-2 py-0.5 rounded border border-[#2e3148] text-[#8b90a8] hover:border-[#4f8ef7] transition-colors">
+                      <button onClick={async () => {
+                        if (scatterPoints) { setScatterPoints(null); return; }
+                        setScatterLoading(true); setChartError(null);
+                        try {
+                          const tok = await resolveOmToken();
+                          if (!tok) { setChartError("ERA5 token unavailable"); return; }
+                          const d = await getScatterData(tok, units);
+                          setScatterPoints(d.points);
+                        } catch (e) { setChartError("Scatter: " + (e instanceof Error ? e.message : String(e))); }
+                        finally { setScatterLoading(false); }
+                      }} className="text-xs px-2 py-0.5 rounded border border-[#2e3148] text-[#8b90a8] hover:border-[#4f8ef7] transition-colors">
                         {scatterLoading ? "…" : scatterPoints ? "↺ reset" : "▶ run chart"}
                       </button>
                     </div>
@@ -217,7 +260,17 @@ export default function StationStage() {
                   <div className="mb-3">
                     <div className="flex items-center justify-between mb-1">
                       <span className="text-xs font-semibold text-gray-400">Psychrometric chart</span>
-                      <button onClick={async () => { if (psychroB64) { setPsychroB64(null); return; } if (!omResult.om_token) return; setPsychroLoading(true); try { const d = await getPsychroChart(omResult.om_token, units); setPsychroB64(d.image_b64); } catch { /* ignore */ } finally { setPsychroLoading(false); } }} className="text-xs px-2 py-0.5 rounded border border-[#2e3148] text-[#8b90a8] hover:border-[#4f8ef7] transition-colors">
+                      <button onClick={async () => {
+                        if (psychroB64) { setPsychroB64(null); return; }
+                        setPsychroLoading(true); setChartError(null);
+                        try {
+                          const tok = await resolveOmToken();
+                          if (!tok) { setChartError("ERA5 token unavailable"); return; }
+                          const d = await getPsychroChart(tok, units);
+                          setPsychroB64(d.image_b64);
+                        } catch (e) { setChartError("Psychro: " + (e instanceof Error ? e.message : String(e))); }
+                        finally { setPsychroLoading(false); }
+                      }} className="text-xs px-2 py-0.5 rounded border border-[#2e3148] text-[#8b90a8] hover:border-[#4f8ef7] transition-colors">
                         {psychroLoading ? "…" : psychroB64 ? "↺ reset" : "▶ run chart"}
                       </button>
                     </div>
@@ -228,7 +281,17 @@ export default function StationStage() {
                   <div className="mb-3">
                     <div className="flex items-center justify-between mb-1">
                       <span className="text-xs font-semibold text-gray-400">Freezing hours per fiscal week</span>
-                      <button onClick={async () => { if (freezeBars) { setFreezeBars(null); return; } if (!omResult.om_token) return; setFreezeLoading(true); try { const r = await getFreezingData(omResult.om_token); setFreezeBars(r.bars); } catch { setFreezeBars([]); } finally { setFreezeLoading(false); } }} className="text-xs px-2 py-0.5 rounded border border-[#2e3148] text-[#8b90a8] hover:border-[#4f8ef7] transition-colors">
+                      <button onClick={async () => {
+                        if (freezeBars) { setFreezeBars(null); return; }
+                        setFreezeLoading(true); setChartError(null);
+                        try {
+                          const tok = await resolveOmToken();
+                          if (!tok) { setChartError("ERA5 token unavailable"); return; }
+                          const r = await getFreezingData(tok);
+                          setFreezeBars(r.bars);
+                        } catch (e) { setChartError("Freezing: " + (e instanceof Error ? e.message : String(e))); }
+                        finally { setFreezeLoading(false); }
+                      }} className="text-xs px-2 py-0.5 rounded border border-[#2e3148] text-[#8b90a8] hover:border-[#4f8ef7] transition-colors">
                         {freezeLoading ? "…" : freezeBars ? "↺ reset" : "▶ run chart"}
                       </button>
                     </div>
@@ -249,7 +312,17 @@ export default function StationStage() {
                   <div>
                     <div className="flex items-center justify-between mb-1">
                       <span className="text-xs font-semibold text-gray-400">Min temperature heatmap</span>
-                      <button onClick={async () => { if (heatCells) { setHeatCells(null); return; } if (!omResult.om_token) return; setHeatLoading(true); try { const r = await getHeatmapData(omResult.om_token, units); setHeatCells(r.cells); } catch { setHeatCells([]); } finally { setHeatLoading(false); } }} className="text-xs px-2 py-0.5 rounded border border-[#2e3148] text-[#8b90a8] hover:border-[#4f8ef7] transition-colors">
+                      <button onClick={async () => {
+                        if (heatCells) { setHeatCells(null); return; }
+                        setHeatLoading(true); setChartError(null);
+                        try {
+                          const tok = await resolveOmToken();
+                          if (!tok) { setChartError("ERA5 token unavailable"); return; }
+                          const r = await getHeatmapData(tok, units);
+                          setHeatCells(r.cells);
+                        } catch (e) { setChartError("Heatmap: " + (e instanceof Error ? e.message : String(e))); }
+                        finally { setHeatLoading(false); }
+                      }} className="text-xs px-2 py-0.5 rounded border border-[#2e3148] text-[#8b90a8] hover:border-[#4f8ef7] transition-colors">
                         {heatLoading ? "…" : heatCells ? "↺ reset" : "▶ run chart"}
                       </button>
                     </div>
