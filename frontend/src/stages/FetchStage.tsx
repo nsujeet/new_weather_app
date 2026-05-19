@@ -139,13 +139,7 @@ export default function FetchStage() {
           </p>
           <button
             onClick={handleFetch}
-            className="w-full text-white font-medium py-2 px-4 rounded-lg text-sm transition-all"
-            style={{
-              background: "#4f8ef7",
-              boxShadow: "0 0 0 2px #4f8ef755, 0 4px 14px #4f8ef740",
-              transform: "translateY(-1px)",
-              border: "none",
-            }}
+            className="wa-btn wa-btn-primary"
           >
             ⬇ Start Download
           </button>
@@ -226,11 +220,6 @@ export default function FetchStage() {
           <button
             onClick={() => advanceTo("filter")}
             className="wa-btn wa-btn-success"
-            style={{
-              background: "#22c55e",
-              boxShadow: "0 0 0 2px #22c55e55, 0 4px 14px #22c55e40",
-              transform: "translateY(-1px)",
-            }}
           >
             ✓ Run Analysis →
           </button>

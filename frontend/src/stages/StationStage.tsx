@@ -503,11 +503,6 @@ export default function StationStage() {
         onClick={() => advanceTo("years")}
         disabled={!selectedStation}
         className="wa-btn wa-btn-primary"
-        style={selectedStation ? {
-          background: "#4f8ef7",
-          boxShadow: "0 0 0 2px #4f8ef755, 0 4px 14px #4f8ef740",
-          transform: "translateY(-1px)",
-        } : undefined}
       >
         {selectedStation ? `✓ Confirm — ${selectedStation}` : "Select a station to continue"}
       </button>

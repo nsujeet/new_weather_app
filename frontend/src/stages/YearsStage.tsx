@@ -91,11 +91,6 @@ export default function YearsStage() {
         onClick={() => advanceTo("fetch")}
         disabled={selectedYears.length === 0}
         className="wa-btn wa-btn-primary"
-        style={selectedYears.length > 0 ? {
-          background: "#4f8ef7",
-          boxShadow: "0 0 0 2px #4f8ef755, 0 4px 14px #4f8ef740",
-          transform: "translateY(-1px)",
-        } : undefined}
       >
         {selectedYears.length > 0
           ? `✓ Fetch ${selectedYears.length} year${selectedYears.length !== 1 ? "s" : ""} →`
