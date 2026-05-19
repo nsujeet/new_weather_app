@@ -302,7 +302,7 @@ export default function StationStage() {
                           <XAxis dataKey="week" label={{ value: "Fiscal week", position: "insideBottom", offset: -8, fontSize: 10, fill: "#8b90a8" }} tick={{ fontSize: 9, fill: "#8b90a8" }} />
                           <YAxis tick={{ fontSize: 9, fill: "#8b90a8" }} />
                           <RCTooltip contentStyle={{ background: "#1a1d27", border: "1px solid #2e3148", fontSize: 11 }} formatter={(v: number) => [`${v} hrs`, "Hours below 36°F"]} />
-                          <Bar dataKey="hours" fill="#378ADD" />
+                          <Bar dataKey="hours" fill="#378ADD" barSize={6} />
                         </BarChart>
                       </ResponsiveContainer>
                     )}

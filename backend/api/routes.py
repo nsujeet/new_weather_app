@@ -682,6 +682,11 @@ def freezing_data(token: str, threshold_f: float = 36.0):
     by_week = dfw.groupby("week")["below"].sum().reset_index()
     by_week.columns = ["week", "hours"]
 
+    # Fill all 52 weeks so chart always shows a full-year view (0-hour weeks = no freezing)
+    all_weeks = pd.DataFrame({"week": range(1, 53)})
+    by_week = all_weeks.merge(by_week, on="week", how="left").fillna(0)
+    by_week["hours"] = by_week["hours"].astype(int)
+
     return {
         "bars": by_week.to_dict(orient="records"),
         "threshold_f": threshold_f,
