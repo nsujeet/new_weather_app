@@ -155,14 +155,18 @@ export default function StationStage() {
               const omWb  = getRowVal(omResult.stats, wbCol,  pct);
               const omMwb = getRowVal(omResult.stats, mwbCol, pct);
               const omMdb = getRowVal(omResult.stats, mdbCol, pct);
-              const omPres = siteInfo ? (isSI ? siteInfo.pressure_kpa.toFixed(3) : siteInfo.pressure_psi.toFixed(3)) : "—";
+              const omPres   = siteInfo ? (isSI ? siteInfo.pressure_kpa.toFixed(3) : siteInfo.pressure_psi.toFixed(3)) : "—";
+              const siteElevFt = siteInfo?.elevation_ft;
 
-              const metrics: { label: string; om?: number | null; omStr?: string }[] = [
+              const metrics: { label: string; om?: number | null; omStr?: string; isMeta?: boolean }[] = [
                 { label: `${pct}% Tdb (${sfx})`,    om: omDb   },
                 { label: `${pct}% Twb (${sfx})`,    om: omWb   },
                 { label: `MCWB @ Tdb (${sfx})`,     om: omMwb  },
                 { label: `MCDB @ Twb (${sfx})`,     om: omMdb  },
                 { label: `Site pressure (${pUnit})`, omStr: omPres },
+                { label: "Distance (mi)",            omStr: "at site",                                              isMeta: true },
+                { label: "Elevation (ft)",           omStr: siteElevFt != null ? siteElevFt.toFixed(0) : "—",      isMeta: true },
+                { label: "Δ Elevation (ft)",         omStr: "0",                                                    isMeta: true },
               ];
 
               return (
@@ -185,25 +189,36 @@ export default function StationStage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {metrics.map(({ label, om, omStr }, ri) => (
+                        {metrics.map(({ label, om, omStr, isMeta }, ri) => (
                           <tr key={label} className={ri % 2 === 0 ? "bg-[#1a1d27]" : ""}>
-                            <td className="py-1 pr-3 text-gray-400 whitespace-nowrap">{label}</td>
+                            <td className={`py-1 pr-3 whitespace-nowrap ${isMeta ? "text-gray-500" : "text-gray-400"}`}>{label}</td>
                             <td className="text-right py-1 px-2 font-mono text-blue-300">
                               {omStr ?? (om != null ? om.toFixed(1) : "—")}
                             </td>
                             {ashraStations.map((s) => {
                               const cond = condByWmo[s.wmo];
                               const lv   = cond?.levels?.[acfLevel];
-                              let val: string = ashraLoading ? "…" : "—";
-                              if (lv) {
-                                if      (ri === 0) val = lv.tdb  != null ? lv.tdb.toFixed(1)  : "—";
-                                else if (ri === 1) val = lv.twb  != null ? lv.twb.toFixed(1)  : "—";
-                                else if (ri === 2) val = lv.mcwb != null ? lv.mcwb.toFixed(1) : "—";
-                                else if (ri === 3) val = lv.mcdb != null ? lv.mcdb.toFixed(1) : "—";
-                                else if (ri === 4) val = cond?.pressure_psia != null ? cond.pressure_psia.toFixed(3) : "—";
+                              let val: string = "—";
+                              if (ri === 5) {
+                                val = s.dist_miles != null ? s.dist_miles.toFixed(1) : "—";
+                              } else if (ri === 6) {
+                                val = s.elev_ft != null ? s.elev_ft.toFixed(0) : "—";
+                              } else if (ri === 7) {
+                                val = (s.elev_ft != null && siteElevFt != null)
+                                  ? Math.abs(s.elev_ft - siteElevFt).toFixed(0)
+                                  : "—";
+                              } else {
+                                val = ashraLoading ? "…" : "—";
+                                if (lv) {
+                                  if      (ri === 0) val = lv.tdb  != null ? lv.tdb.toFixed(1)  : "—";
+                                  else if (ri === 1) val = lv.twb  != null ? lv.twb.toFixed(1)  : "—";
+                                  else if (ri === 2) val = lv.mcwb != null ? lv.mcwb.toFixed(1) : "—";
+                                  else if (ri === 3) val = lv.mcdb != null ? lv.mcdb.toFixed(1) : "—";
+                                  else if (ri === 4) val = cond?.pressure_psia != null ? cond.pressure_psia.toFixed(3) : "—";
+                                }
                               }
                               return (
-                                <td key={s.wmo} className="text-right py-1 px-2 font-mono" style={{ color: "var(--wa-text-dim)" }}>
+                                <td key={s.wmo} className={`text-right py-1 px-2 font-mono ${isMeta ? "text-gray-500" : ""}`} style={isMeta ? {} : { color: "var(--wa-text-dim)" }}>
                                   {val}
                                 </td>
                               );
