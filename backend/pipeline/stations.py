@@ -21,6 +21,7 @@ Ranking logic:
   than distance for psychrometric accuracy.
 """
 
+import math
 import os
 import pandas as pd
 import numpy as np
@@ -33,6 +34,9 @@ except ModuleNotFoundError:
 DEFAULT_CSV = os.path.join(
     os.path.dirname(__file__), "..", "data", "ghcnh-station-list.csv"
 )
+
+# module-level cache so we only read the CSV once per process
+_station_cache: pd.DataFrame | None = None
 
 # stations with elevation = -999.9 have unknown elevation — exclude
 UNKNOWN_ELEVATION = -999.9
@@ -53,22 +57,13 @@ PREFERRED_PREFIX = "USW"
 
 def load_station_list(csv_path: str = DEFAULT_CSV) -> pd.DataFrame:
     """
-    Load and clean the GHCNh station list CSV.
-
-    Filters out:
-      - Stations with unknown elevation (-999.9)
-      - Rows with missing lat/lon
-
-    Adds:
-      - elevation_ft column
-      - is_preferred flag (USW prefix stations)
-
-    Returns:
-        DataFrame with columns:
-        GHCN_ID, NAME, STATE, ISO_CODE,
-        LATITUDE, LONGITUDE, ELEVATION (metres), elevation_ft,
-        is_preferred
+    Load and clean the GHCNh station list CSV. Result is cached in memory
+    so subsequent calls are instant (no re-read).
     """
+    global _station_cache
+    if _station_cache is not None:
+        return _station_cache
+
     df = pd.read_csv(csv_path, low_memory=False)
 
     # drop unknown elevations
@@ -83,7 +78,8 @@ def load_station_list(csv_path: str = DEFAULT_CSV) -> pd.DataFrame:
     # flag preferred stations
     df["is_preferred"] = df["GHCN_ID"].str.startswith(PREFERRED_PREFIX)
 
-    return df.reset_index(drop=True)
+    _station_cache = df.reset_index(drop=True)
+    return _station_cache
 
 
 # ─────────────────────────────────────────────────────────────
@@ -120,11 +116,24 @@ def find_nearest_stations(
         dist_miles, elev_delta_m, elev_delta_ft,
         score, is_preferred, recommendation_status
     """
-    df = stations_df.copy()
+    # cheap bounding-box pre-filter: 3° lat ≈ 207 mi margin guarantees we
+    # never miss a closer station while cutting 38k rows to ~200-500
+    lat_margin = 3.0
+    lon_margin = 3.0 / max(0.01, math.cos(math.radians(site_lat)))
+    mask = (
+        stations_df["LATITUDE"].between(site_lat - lat_margin, site_lat + lat_margin) &
+        stations_df["LONGITUDE"].between(site_lon - lon_margin, site_lon + lon_margin)
+    )
+    candidates = stations_df[mask]
+    # fall back to full list if the box is too sparse (e.g. tiny islands)
+    if len(candidates) < n * 3:
+        candidates = stations_df
+
+    df = candidates.copy()
 
     site_ele_ft = meters_to_feet(site_elevation_m)
 
-    # vectorised haversine using numpy
+    # vectorised haversine only on the candidate subset
     df["dist_miles"] = _haversine_vectorised(
         site_lat, site_lon,
         df["LATITUDE"].values,
