@@ -90,33 +90,209 @@ export default function StationStage() {
   const condByWmo: Record<string, AshraConditionResult> = {};
   for (const c of ashraConditions) condByWmo[c.wmo] = c;
 
-  if (loading) return (
-    <Card title="2. NOAA Station">
-      <p className="text-sm text-gray-500 animate-pulse">Ranking nearest stations…</p>
-    </Card>
-  );
-
-  if (error) return (
-    <Card title="2. NOAA Station">
-      <p className="text-red-500 text-sm">{error}</p>
-    </Card>
-  );
-
   return (
     <Card title="2. NOAA Station">
+
+      {/* ── ERA5 Quick Estimate — shown first so results are visible immediately ── */}
+      <div className="mb-4">
+        <button
+          onClick={() => setEra5Open((o) => !o)}
+          className="w-full flex items-center justify-between px-3 py-2 rounded-lg border text-sm font-semibold transition-colors"
+          style={{ borderColor: "var(--wa-border)", background: "var(--wa-surface)", color: "var(--wa-text)" }}
+        >
+          <span>⚡ ERA5 Quick Estimate (15-year) + ASHRAE</span>
+          <span className="text-xs text-gray-500">{era5Open ? "▲ hide" : "▼ show"}</span>
+        </button>
+
+        {era5Open && (
+          <div className="mt-2 p-3 rounded-lg border" style={{ borderColor: "var(--wa-border)", background: "var(--wa-surface)" }}>
+            {omLoading && !omResult && (
+              <p className="text-xs text-blue-400 animate-pulse">Fetching ERA5 data…</p>
+            )}
+            {omError && !omResult && (
+              <p className="text-xs text-orange-400">ERA5 unavailable: {omError}</p>
+            )}
+
+            {omResult && (() => {
+              const pct = Number(acfLevel);
+              const isSI = units === "C";
+              const sfx  = isSI ? "°C" : "°F";
+              const dbCol  = isSI ? "DB_C"   : "DB_F";
+              const wbCol  = isSI ? "WB_C"   : "WB_F";
+              const mwbCol = isSI ? "MCWB_C" : "MCWB_F";
+              const mdbCol = isSI ? "MCDB_C" : "MCDB_F";
+              const pUnit  = isSI ? "kPa" : "psia";
+
+              const omDb  = getRowVal(omResult.stats, dbCol,  pct);
+              const omWb  = getRowVal(omResult.stats, wbCol,  pct);
+              const omMwb = getRowVal(omResult.stats, mwbCol, pct);
+              const omMdb = getRowVal(omResult.stats, mdbCol, pct);
+              const omPres = siteInfo ? (isSI ? siteInfo.pressure_kpa.toFixed(3) : siteInfo.pressure_psi.toFixed(3)) : "—";
+
+              const metrics: { label: string; om?: number | null; omStr?: string }[] = [
+                { label: `${pct}% Tdb (${sfx})`,    om: omDb   },
+                { label: `${pct}% Twb (${sfx})`,    om: omWb   },
+                { label: `MCWB @ Tdb (${sfx})`,     om: omMwb  },
+                { label: `MCDB @ Twb (${sfx})`,     om: omMdb  },
+                { label: `Site pressure (${pUnit})`, omStr: omPres },
+              ];
+
+              return (
+                <>
+                  <div className="overflow-x-auto mb-3">
+                    <table className="w-full text-xs border-collapse">
+                      <thead>
+                        <tr>
+                          <th className="text-left py-1 pr-3 text-gray-500 font-semibold whitespace-nowrap">Metric</th>
+                          <th className="text-right py-1 px-2 text-blue-400 font-semibold whitespace-nowrap">🌐 ERA5</th>
+                          {ashraStations.map((s, i) => {
+                            const cond = condByWmo[s.wmo];
+                            const name = cond?.station ?? s.station;
+                            return (
+                              <th key={s.wmo} className="text-right py-1 px-2 font-semibold whitespace-nowrap" style={{ color: "var(--wa-text-dim)" }}>
+                                📊 {i === 0 ? "⭐ " : ""}{name.split(",")[0]}
+                              </th>
+                            );
+                          })}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {metrics.map(({ label, om, omStr }, ri) => (
+                          <tr key={label} className={ri % 2 === 0 ? "bg-[#1a1d27]" : ""}>
+                            <td className="py-1 pr-3 text-gray-400 whitespace-nowrap">{label}</td>
+                            <td className="text-right py-1 px-2 font-mono text-blue-300">
+                              {omStr ?? (om != null ? om.toFixed(1) : "—")}
+                            </td>
+                            {ashraStations.map((s) => {
+                              const cond = condByWmo[s.wmo];
+                              const lv   = cond?.levels?.[acfLevel];
+                              let val: string = ashraLoading ? "…" : "—";
+                              if (lv) {
+                                if      (ri === 0) val = lv.tdb  != null ? lv.tdb.toFixed(1)  : "—";
+                                else if (ri === 1) val = lv.twb  != null ? lv.twb.toFixed(1)  : "—";
+                                else if (ri === 2) val = lv.mcwb != null ? lv.mcwb.toFixed(1) : "—";
+                                else if (ri === 3) val = lv.mcdb != null ? lv.mcdb.toFixed(1) : "—";
+                                else if (ri === 4) val = cond?.pressure_psia != null ? cond.pressure_psia.toFixed(3) : "—";
+                              }
+                              return (
+                                <td key={s.wmo} className="text-right py-1 px-2 font-mono" style={{ color: "var(--wa-text-dim)" }}>
+                                  {val}
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {omResult.winterization.no_freeze_start && omResult.winterization.no_freeze_end && (
+                    <div className="text-xs px-3 py-2 rounded mb-3 bg-blue-950 border border-blue-800 text-blue-300">
+                      No-freeze window: <strong>{omResult.winterization.no_freeze_start}</strong> → <strong>{omResult.winterization.no_freeze_end}</strong>
+                    </div>
+                  )}
+
+                  {/* Scatter chart */}
+                  <div className="mb-3">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs font-semibold text-gray-400">Weather scatter — Tdb vs Twb</span>
+                      <button onClick={async () => { if (scatterPoints) { setScatterPoints(null); return; } if (!omResult.om_token) return; setScatterLoading(true); try { const d = await getScatterData(omResult.om_token, units); setScatterPoints(d.points); } catch { /* ignore */ } finally { setScatterLoading(false); } }} className="text-xs px-2 py-0.5 rounded border border-[#2e3148] text-[#8b90a8] hover:border-[#4f8ef7] transition-colors">
+                        {scatterLoading ? "…" : scatterPoints ? "↺ reset" : "▶ run chart"}
+                      </button>
+                    </div>
+                    {scatterPoints && (
+                      <ResponsiveContainer width="100%" height={200}>
+                        <ScatterChart margin={{ top: 4, right: 4, bottom: 4, left: 4 }}>
+                          <CartesianGrid stroke="#2e3148" strokeDasharray="3 3" />
+                          <XAxis dataKey="x" name={`Tdb (${sfx})`} type="number" domain={["auto","auto"]} tick={{ fontSize: 10, fill: "#8b90a8" }} label={{ value: `Tdb (${sfx})`, position: "insideBottom", offset: -2, fontSize: 10, fill: "#8b90a8" }} />
+                          <YAxis dataKey="y" name={`Twb (${sfx})`} type="number" domain={["auto","auto"]} tick={{ fontSize: 10, fill: "#8b90a8" }} />
+                          <RCTooltip cursor={{ strokeDasharray: "3 3" }} contentStyle={{ background: "#1a1d27", border: "1px solid #2e3148", fontSize: 11 }} formatter={(v: number) => v.toFixed(1)} />
+                          <Scatter data={scatterPoints} fill="#4f8ef7" opacity={0.3} r={2} />
+                        </ScatterChart>
+                      </ResponsiveContainer>
+                    )}
+                  </div>
+
+                  {/* Psychrometric chart */}
+                  <div className="mb-3">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs font-semibold text-gray-400">Psychrometric chart</span>
+                      <button onClick={async () => { if (psychroB64) { setPsychroB64(null); return; } if (!omResult.om_token) return; setPsychroLoading(true); try { const d = await getPsychroChart(omResult.om_token, units); setPsychroB64(d.image_b64); } catch { /* ignore */ } finally { setPsychroLoading(false); } }} className="text-xs px-2 py-0.5 rounded border border-[#2e3148] text-[#8b90a8] hover:border-[#4f8ef7] transition-colors">
+                        {psychroLoading ? "…" : psychroB64 ? "↺ reset" : "▶ run chart"}
+                      </button>
+                    </div>
+                    {psychroB64 && <img src={`data:image/png;base64,${psychroB64}`} alt="Psychrometric chart" className="w-full rounded" />}
+                  </div>
+
+                  {/* Freezing hours */}
+                  <div className="mb-3">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs font-semibold text-gray-400">Freezing hours per fiscal week</span>
+                      <button onClick={async () => { if (freezeBars) { setFreezeBars(null); return; } if (!omResult.om_token) return; setFreezeLoading(true); try { const r = await getFreezingData(omResult.om_token); setFreezeBars(r.bars); } catch { setFreezeBars([]); } finally { setFreezeLoading(false); } }} className="text-xs px-2 py-0.5 rounded border border-[#2e3148] text-[#8b90a8] hover:border-[#4f8ef7] transition-colors">
+                        {freezeLoading ? "…" : freezeBars ? "↺ reset" : "▶ run chart"}
+                      </button>
+                    </div>
+                    {freezeBars && freezeBars.length > 0 && (
+                      <ResponsiveContainer width="100%" height={180}>
+                        <BarChart data={freezeBars} margin={{ top: 4, right: 8, bottom: 18, left: 20 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#2e3148" />
+                          <XAxis dataKey="week" label={{ value: "Fiscal week", position: "insideBottom", offset: -8, fontSize: 10, fill: "#8b90a8" }} tick={{ fontSize: 9, fill: "#8b90a8" }} />
+                          <YAxis tick={{ fontSize: 9, fill: "#8b90a8" }} />
+                          <RCTooltip contentStyle={{ background: "#1a1d27", border: "1px solid #2e3148", fontSize: 11 }} formatter={(v: number) => [`${v} hrs`, "Hours below 36°F"]} />
+                          <Bar dataKey="hours" fill="#378ADD" />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    )}
+                  </div>
+
+                  {/* Min temp heatmap */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs font-semibold text-gray-400">Min temperature heatmap</span>
+                      <button onClick={async () => { if (heatCells) { setHeatCells(null); return; } if (!omResult.om_token) return; setHeatLoading(true); try { const r = await getHeatmapData(omResult.om_token, units); setHeatCells(r.cells); } catch { setHeatCells([]); } finally { setHeatLoading(false); } }} className="text-xs px-2 py-0.5 rounded border border-[#2e3148] text-[#8b90a8] hover:border-[#4f8ef7] transition-colors">
+                        {heatLoading ? "…" : heatCells ? "↺ reset" : "▶ run chart"}
+                      </button>
+                    </div>
+                    {heatCells && heatCells.length > 0 && (() => {
+                      const years  = [...new Set(heatCells.map((c) => c.year))].sort();
+                      const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+                      const lookup: Record<string, number> = {};
+                      heatCells.forEach((c) => { lookup[`${c.month}-${c.year}`] = c.value; });
+                      const minV = Math.min(...heatCells.map((c) => c.value));
+                      const maxV = Math.max(...heatCells.map((c) => c.value));
+                      const colour = (v: number) => { const t = (v - minV) / (maxV - minV || 1); const r = Math.round(220 - t * 170); const g = Math.round(50 + t * 170); return `rgb(${r},${g},50)`; };
+                      return (
+                        <div className="overflow-x-auto">
+                          <table className="text-xs border-collapse">
+                            <thead><tr><th className="px-1 py-0.5 text-gray-500 text-left">Month</th>{years.map((y) => <th key={y} className="px-1 py-0.5 text-gray-500 text-center">{y}</th>)}</tr></thead>
+                            <tbody>{months.map((m) => (<tr key={m}><td className="px-1 py-0.5 font-medium text-gray-400">{m}</td>{years.map((y) => { const v = lookup[`${m}-${y}`]; return (<td key={y} className="px-1 py-0.5 text-center font-mono" style={v != null ? { backgroundColor: colour(v), color: "#fff", borderRadius: 2 } : {}}>{v != null ? v.toFixed(1) : ""}</td>); })}</tr>))}</tbody>
+                          </table>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                </>
+              );
+            })()}
+          </div>
+        )}
+      </div>
+
+      {/* ── Map ── */}
       {lat != null && lon != null && (
         <div className="mb-4">
           <Suspense fallback={<div className="h-[340px] rounded-lg border border-gray-200 flex items-center justify-center text-xs text-gray-400">Loading map…</div>}>
-            <SiteMap
-              siteLat={lat} siteLon={lon}
-              noaaStations={noaaStations}
-              selectedStation={selectedStation}
-              onSelectStation={selectStation}
-            />
+            <SiteMap siteLat={lat} siteLon={lon} noaaStations={noaaStations} selectedStation={selectedStation} onSelectStation={selectStation} />
           </Suspense>
         </div>
       )}
 
+      {/* ── NOAA + ASHRAE station cards ── */}
+      {loading ? (
+        <p className="text-sm text-gray-500 animate-pulse mb-4">Ranking nearest stations…</p>
+      ) : error ? (
+        <p className="text-red-500 text-sm mb-4">{error}</p>
+      ) : (
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
         {/* NOAA cards */}
         <div>
@@ -233,269 +409,7 @@ export default function StationStage() {
           </div>
         </div>
       </div>
-
-      {/* ── ERA5 Quick Estimate ──────────────────────────────── */}
-      <div className="mb-4">
-        <button
-          onClick={() => setEra5Open((o) => !o)}
-          className="w-full flex items-center justify-between px-3 py-2 rounded-lg border text-sm font-semibold transition-colors"
-          style={{ borderColor: "var(--wa-border)", background: "var(--wa-surface)", color: "var(--wa-text)" }}
-        >
-          <span>⚡ Quick estimate — Open-Meteo ERA5 + ASHRAE</span>
-          <span className="text-xs text-gray-500">{era5Open ? "▲ hide" : "▼ show"}</span>
-        </button>
-
-        {era5Open && (
-          <div className="mt-2 p-3 rounded-lg border" style={{ borderColor: "var(--wa-border)", background: "var(--wa-surface)" }}>
-
-            {/* loading / error states */}
-            {omLoading && !omResult && (
-              <p className="text-xs text-blue-400 animate-pulse">Fetching ERA5 data…</p>
-            )}
-            {omError && !omResult && (
-              <p className="text-xs text-orange-400">ERA5 unavailable: {omError}</p>
-            )}
-
-            {omResult && (() => {
-              const pct = Number(acfLevel);
-              const isSI = units === "C";
-              const sfx  = isSI ? "°C" : "°F";
-              const dbCol  = isSI ? "DB_C"   : "DB_F";
-              const wbCol  = isSI ? "WB_C"   : "WB_F";
-              const mwbCol = isSI ? "MCWB_C" : "MCWB_F";
-              const mdbCol = isSI ? "MCDB_C" : "MCDB_F";
-              const pUnit  = isSI ? "kPa" : "psia";
-
-              const omDb  = getRowVal(omResult.stats, dbCol,  pct);
-              const omWb  = getRowVal(omResult.stats, wbCol,  pct);
-              const omMwb = getRowVal(omResult.stats, mwbCol, pct);
-              const omMdb = getRowVal(omResult.stats, mdbCol, pct);
-              const omPres = siteInfo ? (isSI ? siteInfo.pressure_kpa.toFixed(3) : siteInfo.pressure_psi.toFixed(3)) : "—";
-
-              const metrics: { label: string; om?: number | null; omStr?: string }[] = [
-                { label: `${pct}% Tdb (${sfx})`,     om: omDb   },
-                { label: `${pct}% Twb (${sfx})`,     om: omWb   },
-                { label: `MCWB @ Tdb (${sfx})`,      om: omMwb  },
-                { label: `MCDB @ Twb (${sfx})`,      om: omMdb  },
-                { label: `Site pressure (${pUnit})`,  omStr: omPres },
-              ];
-
-              return (
-                <>
-                  {/* Comparison table */}
-                  <div className="overflow-x-auto mb-3">
-                    <table className="w-full text-xs border-collapse">
-                      <thead>
-                        <tr>
-                          <th className="text-left py-1 pr-3 text-gray-500 font-semibold whitespace-nowrap">Metric</th>
-                          <th className="text-right py-1 px-2 text-blue-400 font-semibold whitespace-nowrap">🌐 ERA5</th>
-                          {ashraStations.map((s, i) => {
-                            const cond = condByWmo[s.wmo];
-                            const name = cond?.station ?? s.station;
-                            return (
-                              <th key={s.wmo} className="text-right py-1 px-2 font-semibold whitespace-nowrap" style={{ color: "var(--wa-text-dim)" }}>
-                                📊 {i === 0 ? "⭐ " : ""}{name.split(",")[0]}
-                              </th>
-                            );
-                          })}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {metrics.map(({ label, om, omStr }, ri) => (
-                          <tr key={label} className={ri % 2 === 0 ? "bg-[#1a1d27]" : ""}>
-                            <td className="py-1 pr-3 text-gray-400 whitespace-nowrap">{label}</td>
-                            <td className="text-right py-1 px-2 font-mono text-blue-300">
-                              {omStr ?? (om != null ? om.toFixed(1) : "—")}
-                            </td>
-                            {ashraStations.map((s) => {
-                              const cond = condByWmo[s.wmo];
-                              const lv   = cond?.levels?.[acfLevel];
-                              let val: string = "—";
-                              if (lv) {
-                                if      (ri === 0) val = lv.tdb  != null ? lv.tdb.toFixed(1)  : "—";
-                                else if (ri === 1) val = lv.twb  != null ? lv.twb.toFixed(1)  : "—";
-                                else if (ri === 2) val = lv.mcwb != null ? lv.mcwb.toFixed(1) : "—";
-                                else if (ri === 3) val = lv.mcdb != null ? lv.mcdb.toFixed(1) : "—";
-                                else if (ri === 4) val = cond?.pressure_psia != null ? cond.pressure_psia.toFixed(3) : "—";
-                              }
-                              return (
-                                <td key={s.wmo} className="text-right py-1 px-2 font-mono" style={{ color: "var(--wa-text-dim)" }}>
-                                  {val}
-                                </td>
-                              );
-                            })}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  {/* Winterization */}
-                  {omResult.winterization.no_freeze_start && omResult.winterization.no_freeze_end && (
-                    <div className="text-xs px-3 py-2 rounded mb-3 bg-blue-950 border border-blue-800 text-blue-300">
-                      No-freeze window: <strong>{omResult.winterization.no_freeze_start}</strong> → <strong>{omResult.winterization.no_freeze_end}</strong>
-                    </div>
-                  )}
-
-                  {/* Scatter chart */}
-                  <div className="mb-3">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs font-semibold text-gray-400">Weather scatter — Tdb vs Twb</span>
-                      <button
-                        onClick={async () => {
-                          if (scatterPoints) { setScatterPoints(null); return; }
-                          if (!omResult.om_token) return;
-                          setScatterLoading(true);
-                          try {
-                            const d = await getScatterData(omResult.om_token, units);
-                            setScatterPoints(d.points);
-                          } catch { /* ignore */ }
-                          finally { setScatterLoading(false); }
-                        }}
-                        className="text-xs px-2 py-0.5 rounded border border-[#2e3148] text-[#8b90a8] hover:border-[#4f8ef7] transition-colors"
-                      >
-                        {scatterLoading ? "…" : scatterPoints ? "↺ reset" : "▶ run chart"}
-                      </button>
-                    </div>
-                    {scatterPoints && (
-                      <ResponsiveContainer width="100%" height={200}>
-                        <ScatterChart margin={{ top: 4, right: 4, bottom: 4, left: 4 }}>
-                          <CartesianGrid stroke="#2e3148" strokeDasharray="3 3" />
-                          <XAxis dataKey="x" name={`Tdb (${sfx})`} type="number" domain={["auto","auto"]}
-                            tick={{ fontSize: 10, fill: "#8b90a8" }} label={{ value: `Tdb (${sfx})`, position: "insideBottom", offset: -2, fontSize: 10, fill: "#8b90a8" }} />
-                          <YAxis dataKey="y" name={`Twb (${sfx})`} type="number" domain={["auto","auto"]}
-                            tick={{ fontSize: 10, fill: "#8b90a8" }} />
-                          <RCTooltip cursor={{ strokeDasharray: "3 3" }} contentStyle={{ background: "#1a1d27", border: "1px solid #2e3148", fontSize: 11 }}
-                            formatter={(v: number) => v.toFixed(1)} />
-                          <Scatter data={scatterPoints} fill="#4f8ef7" opacity={0.3} r={2} />
-                        </ScatterChart>
-                      </ResponsiveContainer>
-                    )}
-                  </div>
-
-                  {/* Psychrometric chart */}
-                  <div className="mb-3">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs font-semibold text-gray-400">Psychrometric chart</span>
-                      <button
-                        onClick={async () => {
-                          if (psychroB64) { setPsychroB64(null); return; }
-                          if (!omResult.om_token) return;
-                          setPsychroLoading(true);
-                          try {
-                            const d = await getPsychroChart(omResult.om_token, units);
-                            setPsychroB64(d.image_b64);
-                          } catch { /* ignore */ }
-                          finally { setPsychroLoading(false); }
-                        }}
-                        className="text-xs px-2 py-0.5 rounded border border-[#2e3148] text-[#8b90a8] hover:border-[#4f8ef7] transition-colors"
-                      >
-                        {psychroLoading ? "…" : psychroB64 ? "↺ reset" : "▶ run chart"}
-                      </button>
-                    </div>
-                    {psychroB64 && (
-                      <img src={`data:image/png;base64,${psychroB64}`} alt="Psychrometric chart" className="w-full rounded" />
-                    )}
-                  </div>
-
-                  {/* Freezing hours bar chart */}
-                  <div className="mb-3">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs font-semibold text-gray-400">Freezing hours per fiscal week</span>
-                      <button
-                        onClick={async () => {
-                          if (freezeBars) { setFreezeBars(null); return; }
-                          if (!omResult.om_token) return;
-                          setFreezeLoading(true);
-                          try { const r = await getFreezingData(omResult.om_token); setFreezeBars(r.bars); }
-                          catch { setFreezeBars([]); }
-                          finally { setFreezeLoading(false); }
-                        }}
-                        className="text-xs px-2 py-0.5 rounded border border-[#2e3148] text-[#8b90a8] hover:border-[#4f8ef7] transition-colors"
-                      >
-                        {freezeLoading ? "…" : freezeBars ? "↺ reset" : "▶ run chart"}
-                      </button>
-                    </div>
-                    {freezeBars && freezeBars.length > 0 && (
-                      <ResponsiveContainer width="100%" height={180}>
-                        <BarChart data={freezeBars} margin={{ top: 4, right: 8, bottom: 18, left: 20 }}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="#2e3148" />
-                          <XAxis dataKey="week" label={{ value: "Fiscal week", position: "insideBottom", offset: -8, fontSize: 10, fill: "#8b90a8" }} tick={{ fontSize: 9, fill: "#8b90a8" }} />
-                          <YAxis tick={{ fontSize: 9, fill: "#8b90a8" }} />
-                          <RCTooltip contentStyle={{ background: "#1a1d27", border: "1px solid #2e3148", fontSize: 11 }} formatter={(v: number) => [`${v} hrs`, "Hours below 36°F"]} />
-                          <Bar dataKey="hours" fill="#378ADD" />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    )}
-                  </div>
-
-                  {/* Min temp heatmap */}
-                  <div>
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs font-semibold text-gray-400">Min temperature heatmap</span>
-                      <button
-                        onClick={async () => {
-                          if (heatCells) { setHeatCells(null); return; }
-                          if (!omResult.om_token) return;
-                          setHeatLoading(true);
-                          try { const r = await getHeatmapData(omResult.om_token, units); setHeatCells(r.cells); }
-                          catch { setHeatCells([]); }
-                          finally { setHeatLoading(false); }
-                        }}
-                        className="text-xs px-2 py-0.5 rounded border border-[#2e3148] text-[#8b90a8] hover:border-[#4f8ef7] transition-colors"
-                      >
-                        {heatLoading ? "…" : heatCells ? "↺ reset" : "▶ run chart"}
-                      </button>
-                    </div>
-                    {heatCells && heatCells.length > 0 && (() => {
-                      const years  = [...new Set(heatCells.map((c) => c.year))].sort();
-                      const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-                      const lookup: Record<string, number> = {};
-                      heatCells.forEach((c) => { lookup[`${c.month}-${c.year}`] = c.value; });
-                      const minV = Math.min(...heatCells.map((c) => c.value));
-                      const maxV = Math.max(...heatCells.map((c) => c.value));
-                      const colour = (v: number) => {
-                        const t = (v - minV) / (maxV - minV || 1);
-                        const r = Math.round(220 - t * 170);
-                        const g = Math.round(50 + t * 170);
-                        return `rgb(${r},${g},50)`;
-                      };
-                      return (
-                        <div className="overflow-x-auto">
-                          <table className="text-xs border-collapse">
-                            <thead>
-                              <tr>
-                                <th className="px-1 py-0.5 text-gray-500 text-left">Month</th>
-                                {years.map((y) => <th key={y} className="px-1 py-0.5 text-gray-500 text-center">{y}</th>)}
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {months.map((m) => (
-                                <tr key={m}>
-                                  <td className="px-1 py-0.5 font-medium text-gray-400">{m}</td>
-                                  {years.map((y) => {
-                                    const v = lookup[`${m}-${y}`];
-                                    return (
-                                      <td key={y} className="px-1 py-0.5 text-center font-mono"
-                                        style={v != null ? { backgroundColor: colour(v), color: "#fff", borderRadius: 2 } : {}}>
-                                        {v != null ? v.toFixed(1) : ""}
-                                      </td>
-                                    );
-                                  })}
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      );
-                    })()}
-                  </div>
-                </>
-              );
-            })()}
-          </div>
-        )}
-      </div>
+      )}
 
       <button
         onClick={() => advanceTo("years")}
