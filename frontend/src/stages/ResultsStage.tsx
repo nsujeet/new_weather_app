@@ -787,7 +787,8 @@ export default function ResultsStage() {
                     return (
                       <tr
                         key={i}
-                        className={`border-b border-gray-100 ${isHighlighted ? "bg-blue-50 font-semibold" : "hover:bg-gray-50"}`}
+                        style={isHighlighted ? { background: "#1e2a4a", color: "#a8c4ff" } : {}}
+                        className={`border-b ${isHighlighted ? "border-[#4f8ef7] font-semibold" : "border-gray-100 hover:bg-gray-50"}`}
                       >
                         {colsShow.map((c) => (
                           <td key={c} className="py-0.5 px-2 font-mono text-right first:text-left">
@@ -870,7 +871,8 @@ export default function ResultsStage() {
                     return (
                       <tr
                         key={i}
-                        className={`border-b border-gray-100 ${isHighlighted ? "bg-emerald-50 font-semibold" : "hover:bg-gray-50"}`}
+                        style={isHighlighted ? { background: "#0f2a20", color: "#6ee7b7" } : {}}
+                        className={`border-b ${isHighlighted ? "border-emerald-700 font-semibold" : "border-gray-100 hover:bg-gray-50"}`}
                       >
                         <td className="py-0.5 px-2 font-mono">{row["%"]}</td>
                         <td className="py-0.5 px-2 font-mono text-right">
