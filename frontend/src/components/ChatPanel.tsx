@@ -58,7 +58,10 @@ export default function ChatPanel({ suggestions }: { suggestions: string[] }) {
           context: buildContext(store),
         }),
       });
-      if (!resp.ok || !resp.body) throw new Error(`HTTP ${resp.status}`);
+      if (!resp.ok || !resp.body) {
+        const body = await resp.json().catch(() => ({}));
+        throw new Error(body.error ?? `HTTP ${resp.status}`);
+      }
 
       const reader = resp.body.getReader();
       const dec = new TextDecoder();

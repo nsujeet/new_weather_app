@@ -84,8 +84,9 @@ def chat_endpoint(request: dict, req: Request = None):
     # ── per-user token budget check ───────────────────────────────
     used = _user_tokens.get(email, 0)
     if used >= _CHAT_TOKEN_LIMIT:
+        admin_email = os.getenv("ADMIN_EMAIL", "nsujeet@gmail.com")
         return JSONResponse(
-            {"error": f"Chat limit reached for this session ({_CHAT_TOKEN_LIMIT:,} tokens). Please contact the app owner."},
+            {"error": f"You've used your chat quota for this session. Please email {admin_email} to request more access."},
             status_code=429,
         )
 
