@@ -43,6 +43,27 @@ from api.models import (
 
 router = APIRouter()
 
+
+def _resolve_email(request: Request | None) -> str:
+    """
+    Return the authenticated email for logging.
+    Falls back to 'anonymous@<IP>' when the session is missing (e.g. after
+    a server restart that wiped the in-memory session store).
+    Never returns an empty string so Sheets rows are always identifiable.
+    """
+    if not request:
+        return "unknown"
+    email = get_current_user(request)
+    if email:
+        return email
+    ip = (
+        request.headers.get("x-forwarded-for", "")
+        .split(",")[0].strip()
+        or (request.client.host if request.client else "?")
+    )
+    return f"anonymous@{ip}"
+
+
 # ── simple in-process result store (keyed by token) ──────────────
 # Replace with Redis or DB for multi-worker prod deployment
 _result_store: dict[str, dict] = {}
@@ -77,7 +98,7 @@ def chat_endpoint(request: dict, req: Request = None):
 
     try:
         from utils.logger import log_event
-        email = get_current_user(req) if req else "unknown"
+        email = _resolve_email(req)
     except Exception:
         email = "unknown"
 
@@ -200,7 +221,7 @@ def site_confirm(req: SiteConfirmRequest, request: Request = None):
 
     try:
         from utils.logger import log_event
-        email = get_current_user(request) if request else "unknown"
+        email = _resolve_email(request)
         log_event(email, "site_confirmed", f"{req.lat:.4f},{req.lon:.4f}")
     except Exception:
         pass
@@ -410,7 +431,7 @@ async def _fetch_stream(req: FetchRequest) -> AsyncGenerator[str, None]:
 async def fetch_years(req: FetchRequest, request: Request = None):
     try:
         from utils.logger import log_event
-        email = get_current_user(request) if request else "unknown"
+        email = _resolve_email(request)
         log_event(email, "noaa_fetch", f"{req.station_id} years={req.years}")
     except Exception:
         pass
@@ -533,7 +554,7 @@ def process(req: ProcessRequest, token: str = Query(...), request: Request = Non
 
     try:
         from utils.logger import log_event
-        email = get_current_user(request) if request else "unknown"
+        email = _resolve_email(request)
         meta_s = _result_store[result_token]["meta"]
         log_event(email, "stage6_done", f"{meta_s.get('station_name','')} n={len(psychro.hourly_dataframe)}")
     except Exception:
