@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import { useStore } from "../store";
 import type { AppState } from "../store";
 
@@ -32,10 +32,18 @@ function buildContext(store: AppState) {
 
 export default function ChatPanel({ suggestions }: { suggestions: string[] }) {
   const store = useStore();
+  const { pendingChatMessage, setPendingChatMessage } = useStore();
   const [msgs, setMsgs]     = useState<Msg[]>([]);
   const [input, setInput]   = useState("");
   const [busy, setBusy]     = useState(false);
   const bottomRef           = useRef<HTMLDivElement>(null);
+
+  // Consume messages injected from the canvas suggestion chips.
+  useEffect(() => {
+    if (!pendingChatMessage) return;
+    setPendingChatMessage(null);
+    send(pendingChatMessage);
+  }, [pendingChatMessage]);
 
   const send = async (text: string) => {
     if (!text.trim() || busy) return;

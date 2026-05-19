@@ -134,6 +134,44 @@ function getSuggestions(stage: StageName): string[] {
   }
 }
 
+// Suggestion chips shown in the right canvas above the active stage.
+// Clicking sends the question directly to the chat panel via the store.
+function CanvasSuggestions({ stage }: { stage: StageName }) {
+  const { setPendingChatMessage } = useStore();
+  const chips = getSuggestions(stage);
+  if (chips.length === 0) return null;
+  return (
+    <div style={{
+      display: "flex", flexWrap: "wrap", gap: "6px",
+      padding: "8px 0 4px", alignItems: "center",
+    }}>
+      <span style={{ fontSize: "10px", color: "var(--wa-text-muted)", whiteSpace: "nowrap", marginRight: "2px" }}>
+        💬
+      </span>
+      {chips.map((q) => (
+        <button
+          key={q}
+          onClick={() => setPendingChatMessage(q)}
+          style={{
+            background: "var(--wa-surface)",
+            border: "1px solid var(--wa-border)",
+            borderRadius: "12px",
+            padding: "3px 10px",
+            fontSize: "11px",
+            color: "var(--wa-text-dim)",
+            cursor: "pointer",
+            transition: "border-color 0.15s, color 0.15s",
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.borderColor = "var(--wa-accent)"; e.currentTarget.style.color = "var(--wa-accent)"; }}
+          onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--wa-border)"; e.currentTarget.style.color = "var(--wa-text-dim)"; }}
+        >
+          {q}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 const STAGE_LABELS: Partial<Record<StageName, string>> = {
   station: "Select Station",
   years:   "Select Years",
@@ -265,6 +303,7 @@ export default function App() {
                     {stageIdx > 0 && (
                       <div className="wa-stage-divider">{STAGE_LABELS[s] ?? ""}</div>
                     )}
+                    <CanvasSuggestions stage={s} />
                     {s === "site"    && <SiteStage />}
                     {s === "station" && <StationStage />}
                     {s === "years"   && <YearsStage />}

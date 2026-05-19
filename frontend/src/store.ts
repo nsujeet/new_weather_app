@@ -77,6 +77,10 @@ export interface AppState {
   setStage: (s: Stage) => void;
   advanceTo: (s: Stage) => void;
 
+  // Proactive chat injection — canvas chips write here, ChatPanel consumes it
+  pendingChatMessage: string | null;
+  setPendingChatMessage: (msg: string | null) => void;
+
   // Reset
   reset: () => void;
 }
@@ -108,6 +112,7 @@ const initial = {
   clipUpper: null,
   processResult: null,
   stage: "site" as Stage,
+  pendingChatMessage: null,
 };
 
 export const useStore = create<AppState>((set, get) => ({
@@ -163,6 +168,8 @@ export const useStore = create<AppState>((set, get) => ({
 
   setStage: (s) => set({ stage: s }),
   advanceTo: (s) => set({ stage: s }),
+
+  setPendingChatMessage: (msg) => set({ pendingChatMessage: msg }),
 
   reset: () => set(initial),
 }));
