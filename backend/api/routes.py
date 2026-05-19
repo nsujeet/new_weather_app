@@ -619,10 +619,10 @@ def scatter_data(token: str, units: str = "F"):
         df[tdb_col] = (df[tdb_col] - 32) * 5 / 9
         df[twb_col] = (df[twb_col] - 32) * 5 / 9
 
-    # Sample down to ~3000 points for fast transfer
+    # Sample down to ~600 points — fewer overlapping circles = crisp scatter
     sample = df[[tdb_col, twb_col]].dropna()
-    if len(sample) > 3000:
-        sample = sample.sample(3000, random_state=42)
+    if len(sample) > 600:
+        sample = sample.sample(600, random_state=42)
 
     return {
         "points": sample.rename(columns={tdb_col: "x", twb_col: "y"}).to_dict(orient="records"),
