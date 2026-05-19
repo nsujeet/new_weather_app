@@ -29,6 +29,7 @@ const MILES_TO_METERS = 1609.34;
 interface Props {
   siteLat: number;
   siteLon: number;
+  siteElevFt?: number;
   noaaStations?: NoaaStation[];
   ashraStations?: AshraStation[];
   selectedStation?: string | null;
@@ -36,7 +37,7 @@ interface Props {
 }
 
 export default function SiteMap({
-  siteLat, siteLon,
+  siteLat, siteLon, siteElevFt,
   noaaStations = [],
   ashraStations = [],
   selectedStation,
@@ -82,7 +83,11 @@ export default function SiteMap({
               <Popup>
                 <strong>{s.station}</strong><br />
                 WMO {s.wmo}<br />
-                {s.dist_miles?.toFixed(1)} mi · {s.elev_ft?.toFixed(0)} ft
+                {s.dist_miles?.toFixed(1)} mi away<br />
+                Elevation: {s.elev_ft?.toFixed(0)} ft
+                {siteElevFt != null && s.elev_ft != null && (
+                  <> (Δ{Math.abs(s.elev_ft - siteElevFt).toFixed(0)} ft)</>
+                )}
               </Popup>
             </CircleMarker>
           );
@@ -111,7 +116,9 @@ export default function SiteMap({
               <Popup>
                 <strong>{s.NAME}</strong><br />
                 {s.GHCN_ID}<br />
-                {s.dist_miles?.toFixed(1)} mi · Δ{s.elev_delta_ft?.toFixed(0)} ft
+                {s.dist_miles?.toFixed(1)} mi away<br />
+                Elevation: {s.elevation_ft?.toFixed(0)} ft
+                {s.elev_delta_ft != null && <> (Δ{s.elev_delta_ft.toFixed(0)} ft from site)</>}
                 {onSelectStation && (
                   <><br /><button
                     onClick={() => onSelectStation(s.GHCN_ID)}
@@ -127,7 +134,8 @@ export default function SiteMap({
         <Marker position={[siteLat, siteLon]}>
           <Popup>
             <strong>Site</strong><br />
-            {siteLat.toFixed(5)}, {siteLon.toFixed(5)}
+            {siteLat.toFixed(5)}, {siteLon.toFixed(5)}<br />
+            {siteElevFt != null && <>Elevation: {siteElevFt.toFixed(0)} ft</>}
           </Popup>
         </Marker>
       </MapContainer>
