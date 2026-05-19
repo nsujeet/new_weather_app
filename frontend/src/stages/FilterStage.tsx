@@ -18,9 +18,11 @@ const QC_LABELS: Record<string, string> = {
 export default function FilterStage() {
   const {
     fetchToken, lat, lon, siteInfo, selectedStation, selectedYears, units,
-    filterScores, selectedFilter, excludeQualityCodes, clipLower, clipUpper,
+    filterScores, selectedFilter, excludeQualityCodes,
+    clipLower, clipUpper, clipLowerDew, clipUpperDew,
     omResult, omLoading,
-    setFilterScores, setSelectedFilter, setExcludeQualityCodes, setClipLower, setClipUpper,
+    setFilterScores, setSelectedFilter, setExcludeQualityCodes,
+    setClipLower, setClipUpper, setClipLowerDew, setClipUpperDew,
     setProcessResult, advanceTo, setStage,
     setOmResult, setOmLoading, setOmError,
   } = useStore();
@@ -95,6 +97,8 @@ export default function FilterStage() {
         exclude_quality_codes: excludeQualityCodes,
         clip_lower_f: clipLower,
         clip_upper_f: clipUpper ?? undefined,
+        clip_lower_dew_f: clipLowerDew,
+        clip_upper_dew_f: clipUpperDew ?? undefined,
       });
       setProcessResult(result);
       advanceTo("results");
@@ -153,35 +157,57 @@ export default function FilterStage() {
       {/* Temperature clipping */}
       <div className="mb-4">
         <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-          Temperature clipping
+          Temperature clipping (°F)
         </p>
-        <div className="flex flex-wrap gap-4 items-center">
-          <label className="flex items-center gap-2 text-xs text-[#8b90a8]">
-            Lower clip (°F)
-            <input
-              type="number"
-              value={clipLower}
-              onChange={(e) => setClipLower(Number(e.target.value))}
-              className="w-16 px-2 py-1 rounded border border-[#2e3148] bg-[#1a1d27] text-[#c0c4d8] text-xs font-mono focus:border-[#4f8ef7] outline-none"
-            />
-          </label>
-          <label className="flex items-center gap-2 text-xs text-[#8b90a8]">
-            <input
-              type="checkbox"
-              checked={clipUpper !== null}
-              onChange={(e) => setClipUpper(e.target.checked ? 120 : null)}
-              className="accent-[#4f8ef7]"
-            />
-            Upper clip (°F)
-            {clipUpper !== null && (
+        <div className="space-y-2">
+          {/* Dry bulb row */}
+          <div className="flex flex-wrap gap-3 items-center">
+            <span className="text-xs text-[#8b90a8] w-24 shrink-0">Dry bulb</span>
+            <label className="flex items-center gap-1.5 text-xs text-[#8b90a8]">
+              Lower
               <input
                 type="number"
-                value={clipUpper}
-                onChange={(e) => setClipUpper(Number(e.target.value))}
+                value={clipLower}
+                onChange={(e) => setClipLower(Number(e.target.value))}
                 className="w-16 px-2 py-1 rounded border border-[#2e3148] bg-[#1a1d27] text-[#c0c4d8] text-xs font-mono focus:border-[#4f8ef7] outline-none"
               />
-            )}
-          </label>
+            </label>
+            <label className="flex items-center gap-1.5 text-xs text-[#8b90a8]">
+              <input type="checkbox" checked={clipUpper !== null}
+                onChange={(e) => setClipUpper(e.target.checked ? 120 : null)}
+                className="accent-[#4f8ef7]" />
+              Upper
+              {clipUpper !== null && (
+                <input type="number" value={clipUpper}
+                  onChange={(e) => setClipUpper(Number(e.target.value))}
+                  className="w-16 px-2 py-1 rounded border border-[#2e3148] bg-[#1a1d27] text-[#c0c4d8] text-xs font-mono focus:border-[#4f8ef7] outline-none" />
+              )}
+            </label>
+          </div>
+          {/* Dew point row */}
+          <div className="flex flex-wrap gap-3 items-center">
+            <span className="text-xs text-[#8b90a8] w-24 shrink-0">Dew point</span>
+            <label className="flex items-center gap-1.5 text-xs text-[#8b90a8]">
+              Lower
+              <input
+                type="number"
+                value={clipLowerDew}
+                onChange={(e) => setClipLowerDew(Number(e.target.value))}
+                className="w-16 px-2 py-1 rounded border border-[#2e3148] bg-[#1a1d27] text-[#c0c4d8] text-xs font-mono focus:border-[#4f8ef7] outline-none"
+              />
+            </label>
+            <label className="flex items-center gap-1.5 text-xs text-[#8b90a8]">
+              <input type="checkbox" checked={clipUpperDew !== null}
+                onChange={(e) => setClipUpperDew(e.target.checked ? 120 : null)}
+                className="accent-[#4f8ef7]" />
+              Upper
+              {clipUpperDew !== null && (
+                <input type="number" value={clipUpperDew}
+                  onChange={(e) => setClipUpperDew(Number(e.target.value))}
+                  className="w-16 px-2 py-1 rounded border border-[#2e3148] bg-[#1a1d27] text-[#c0c4d8] text-xs font-mono focus:border-[#4f8ef7] outline-none" />
+              )}
+            </label>
+          </div>
         </div>
       </div>
 

@@ -485,7 +485,11 @@ def process(req: ProcessRequest, token: str = Query(...), request: Request = Non
 
     # ── processing — clip, resample, interpolate ───────────────
     end_year = max(req.years) if req.years else 2025
-    proc = run_process(df6, end_year=end_year, clip_lower_f=req.clip_lower_f, clip_upper_f=req.clip_upper_f)
+    proc = run_process(
+        df6, end_year=end_year,
+        clip_lower_f=req.clip_lower_f, clip_upper_f=req.clip_upper_f,
+        clip_lower_dew_f=req.clip_lower_dew_f, clip_upper_dew_f=req.clip_upper_dew_f,
+    )
 
     # ── psychrometrics ────────────────────────────────────────
     from pipeline.psychrometrics import compute_psychrometrics
@@ -682,6 +686,47 @@ def scatter_data(token: str, units: str = "F"):
     return {
         "points": points.to_dict(orient="records"),
         "units": units.upper(),
+    }
+
+
+@router.get("/chart/density-data")
+def density_data(token: str, units: str = "F", bins: int = 60):
+    """Return 2D histogram grid of Tdb vs Twb for density heatmap."""
+    stored = _result_store.get(token)
+    if not stored or "hourly_df_json" not in stored:
+        return JSONResponse({"error": "Token not found"}, status_code=404)
+
+    df = pd.read_json(io.StringIO(stored["hourly_df_json"]), orient="records")
+    tdb = pd.to_numeric(df.get("Tdb", pd.Series(dtype=float)), errors="coerce").dropna().values
+    twb = pd.to_numeric(df.get("Twb", pd.Series(dtype=float)), errors="coerce").dropna().values
+    n = min(len(tdb), len(twb))
+    tdb, twb = tdb[:n], twb[:n]
+    mask = ~(np.isnan(tdb) | np.isnan(twb))
+    tdb, twb = tdb[mask], twb[mask]
+
+    if units.upper() == "C":
+        tdb = (tdb - 32) * 5 / 9
+        twb = (twb - 32) * 5 / 9
+
+    counts, xedges, yedges = np.histogram2d(tdb, twb, bins=bins)
+    x_width  = float(xedges[1] - xedges[0])
+    y_height = float(yedges[1] - yedges[0])
+
+    cells = [
+        {"x": round(float(xedges[i] + x_width / 2), 2),
+         "y": round(float(yedges[j] + y_height / 2), 2),
+         "v": int(counts[i, j])}
+        for i in range(len(xedges) - 1)
+        for j in range(len(yedges) - 1)
+        if counts[i, j] > 0
+    ]
+
+    return {
+        "cells":    cells,
+        "x_width":  round(x_width, 3),
+        "y_height": round(y_height, 3),
+        "max_v":    int(counts.max()),
+        "units":    units.upper(),
     }
 
 

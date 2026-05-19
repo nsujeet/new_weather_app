@@ -63,19 +63,23 @@ class ProcessingResult:
 # ─────────────────────────────────────────────────────────────
 
 def process(
-    df6:            pd.DataFrame,
-    end_year:       int | str,
-    clip_lower_f:   float = 5.0,
-    clip_upper_f:   float | None = None,
+    df6:              pd.DataFrame,
+    end_year:         int | str,
+    clip_lower_f:     float = 5.0,
+    clip_upper_f:     float | None = None,
+    clip_lower_dew_f: float | None = None,
+    clip_upper_dew_f: float | None = None,
 ) -> ProcessingResult:
     """
     Run the full processing pipeline on df6.
 
     Args:
-        df6:          filtered DataFrame from filtering.apply_filter()
-        end_year:     MaxYear / EndYear from config (e.g. 2026 or "2026-01-01")
-        clip_lower_f: clip TMP_F / DEW_F below this value → NaN (default 5°F)
-        clip_upper_f: clip above this value → NaN (None = no upper clip)
+        df6:              filtered DataFrame from filtering.apply_filter()
+        end_year:         MaxYear / EndYear from config
+        clip_lower_f:     clip TMP_F (dry bulb) below this → NaN (default 5°F)
+        clip_upper_f:     clip TMP_F above this → NaN (None = no upper clip)
+        clip_lower_dew_f: clip DEW_F below this → NaN (None = use clip_lower_f)
+        clip_upper_dew_f: clip DEW_F above this → NaN (None = use clip_upper_f)
 
     Returns:
         ProcessingResult with all DataFrames and QA stats
@@ -83,9 +87,12 @@ def process(
     result = ProcessingResult()
     messages = []
 
+    dew_lower = clip_lower_dew_f if clip_lower_dew_f is not None else clip_lower_f
+    dew_upper = clip_upper_dew_f if clip_upper_dew_f is not None else clip_upper_f
+
     # ── Step 1: Outlier clip + set index ──────────────────────
     df_original, count_orig, max_orig = _clip_and_index(
-        df6, clip_lower_f, clip_upper_f
+        df6, clip_lower_f, clip_upper_f, dew_lower, dew_upper
     )
     result.df_original     = df_original
     result.missing_original = _missing_pct(count_orig, max_orig)
@@ -180,12 +187,14 @@ def process(
 # ─────────────────────────────────────────────────────────────
 
 def _clip_and_index(
-    df6:            pd.DataFrame,
-    clip_lower_f:   float,
-    clip_upper_f:   float | None,
+    df6:              pd.DataFrame,
+    clip_lower_tmp:   float,
+    clip_upper_tmp:   float | None,
+    clip_lower_dew:   float | None,
+    clip_upper_dew:   float | None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """
-    Mirrors notebook Cell 23 — clip TMP_F/DEW_F, set DATE as index.
+    Mirrors notebook Cell 23 — clip TMP_F/DEW_F separately, set DATE as index.
     Returns (df_original, count_hrs, max_hrs)
     """
     df = df6[["DATE", "TMP_F", "DEW_F"]].copy()
@@ -196,16 +205,16 @@ def _clip_and_index(
     df["TMP_F"] = pd.to_numeric(df["TMP_F"], errors="coerce")
     df["DEW_F"] = pd.to_numeric(df["DEW_F"], errors="coerce")
 
-    # clip lower
-    if clip_lower_f is not None:
-        df[["TMP_F", "DEW_F"]] = df[["TMP_F", "DEW_F"]].where(
-            df[["TMP_F", "DEW_F"]] >= clip_lower_f, np.nan
-        )
-    # clip upper
-    if clip_upper_f is not None:
-        df[["TMP_F", "DEW_F"]] = df[["TMP_F", "DEW_F"]].where(
-            df[["TMP_F", "DEW_F"]] <= clip_upper_f, np.nan
-        )
+    # dry bulb clips
+    if clip_lower_tmp is not None:
+        df["TMP_F"] = df["TMP_F"].where(df["TMP_F"] >= clip_lower_tmp, np.nan)
+    if clip_upper_tmp is not None:
+        df["TMP_F"] = df["TMP_F"].where(df["TMP_F"] <= clip_upper_tmp, np.nan)
+    # dew point clips
+    if clip_lower_dew is not None:
+        df["DEW_F"] = df["DEW_F"].where(df["DEW_F"] >= clip_lower_dew, np.nan)
+    if clip_upper_dew is not None:
+        df["DEW_F"] = df["DEW_F"].where(df["DEW_F"] <= clip_upper_dew, np.nan)
 
     count = _count_hrs(df)
     maxh  = _max_hrs(df)

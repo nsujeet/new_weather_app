@@ -62,11 +62,15 @@ export interface AppState {
   excludeQualityCodes: string[];
   clipLower: number;
   clipUpper: number | null;
+  clipLowerDew: number;
+  clipUpperDew: number | null;
   setFilterScores: (f: FilterScore[] | null) => void;
   setSelectedFilter: (f: string) => void;
   setExcludeQualityCodes: (codes: string[]) => void;
   setClipLower: (v: number) => void;
   setClipUpper: (v: number | null) => void;
+  setClipLowerDew: (v: number) => void;
+  setClipUpperDew: (v: number | null) => void;
 
   // Process result
   processResult: ProcessResult | null;
@@ -110,6 +114,8 @@ const initial = {
   excludeQualityCodes: ["2", "3"],
   clipLower: 5.0,
   clipUpper: null,
+  clipLowerDew: 5.0,
+  clipUpperDew: null,
   processResult: null,
   stage: "site" as Stage,
   pendingChatMessage: null,
@@ -163,6 +169,8 @@ export const useStore = create<AppState>((set, get) => ({
   setExcludeQualityCodes: (codes) => set({ excludeQualityCodes: codes }),
   setClipLower: (v) => set({ clipLower: v }),
   setClipUpper: (v) => set({ clipUpper: v }),
+  setClipLowerDew: (v) => set({ clipLowerDew: v }),
+  setClipUpperDew: (v) => set({ clipUpperDew: v }),
 
   setProcessResult: (r) => set({ processResult: r }),
 

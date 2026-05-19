@@ -150,6 +150,8 @@ export const processData = (
     exclude_quality_codes?: string[];
     clip_lower_f?: number;
     clip_upper_f?: number | null;
+    clip_lower_dew_f?: number;
+    clip_upper_dew_f?: number | null;
   }
 ) =>
   http
@@ -177,6 +179,11 @@ export const getPsychroChart = (token: string, units = "F") =>
 
 export const getScatterData = (token: string, units = "F") =>
   http.get<{ points: { x: number; y: number }[]; units: string }>("/chart/scatter-data", { params: { token, units } }).then((r) => r.data);
+
+export const getDensityData = (token: string, units = "F", bins = 60) =>
+  http.get<{ cells: { x: number; y: number; v: number }[]; x_width: number; y_height: number; max_v: number; units: string }>(
+    "/chart/density-data", { params: { token, units, bins } }
+  ).then((r) => r.data);
 
 export const getHeatmapData = (token: string, units = "F") =>
   http.get<{ cells: { month: string; year: number; value: number }[]; units: string }>("/chart/heatmap-data", { params: { token, units } }).then((r) => r.data);

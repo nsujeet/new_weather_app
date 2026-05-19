@@ -41,6 +41,8 @@ class ProcessRequest(BaseModel):
     exclude_quality_codes: list[str] = ["2", "3"]
     clip_lower_f: float = 5.0
     clip_upper_f: Optional[float] = None
+    clip_lower_dew_f: Optional[float] = None   # None = fall back to clip_lower_f
+    clip_upper_dew_f: Optional[float] = None   # None = fall back to clip_upper_f
 
 
 class DesignConditionsRequest(BaseModel):

@@ -7,9 +7,10 @@ import { useStore } from "../store";
 import { getPsychroChart, getScatterData, getHeatmapData, getFreezingData, downloadResults } from "../api";
 import type { OmStat, AshraConditionResult } from "../api";
 import Card from "../components/Card";
+import WeatherScatter from "../components/WeatherScatter";
 import {
-  ScatterChart, Scatter, XAxis, YAxis, ZAxis, Tooltip as RCTooltip,
-  CartesianGrid, ReferenceLine, ResponsiveContainer, BarChart, Bar,
+  XAxis, YAxis, Tooltip as RCTooltip,
+  CartesianGrid, ResponsiveContainer, BarChart, Bar,
 } from "recharts";
 
 // ── ACF config ────────────────────────────────────────────────────
@@ -138,7 +139,6 @@ export default function ResultsStage() {
   const [chartLoading, setChartLoading] = useState(false);
   const [chartError,   setChartError]   = useState<string | null>(null);
   const [scatterPts,   setScatterPts]   = useState<{x:number;y:number}[]|null>(null);
-  const [scatterLoading, setScatterLoading] = useState(false);
   const [heatCells,    setHeatCells]    = useState<{month:string;year:number;value:number}[]|null>(null);
   const [heatLoading,  setHeatLoading]  = useState(false);
   const [freezeBars,   setFreezeBars]   = useState<{week:number;hours:number}[]|null>(null);
@@ -149,7 +149,6 @@ export default function ResultsStage() {
 
   // OM chart state
   const [omScatterPts,    setOmScatterPts]    = useState<{x:number;y:number}[]|null>(null);
-  const [omScatterLoading,setOmScatterLoading]= useState(false);
   const [omHeatCells,     setOmHeatCells]     = useState<{month:string;year:number;value:number}[]|null>(null);
   const [omHeatLoading,   setOmHeatLoading]   = useState(false);
   const [omFreezeBars,    setOmFreezeBars]    = useState<{week:number;hours:number}[]|null>(null);
@@ -168,10 +167,11 @@ export default function ResultsStage() {
     getHeatmapData(t, units).then((r) => setHeatCells(r.cells)).catch(() => setHeatCells([]));
   }, [processResult?.result_token]);
 
-  // Auto-load OM charts once the OM token is available.
+  // Auto-load OM charts and auto-expand section once the OM token is available.
   useEffect(() => {
     const omT = omResult?.om_token;
     if (!omT) return;
+    setShowOm(true);
     setOmScatterPts(null); setOmFreezeBars(null); setOmHeatCells(null);
     getScatterData(omT, units).then((r) => setOmScatterPts(r.points)).catch(() => setOmScatterPts([]));
     getFreezingData(omT).then((r) => setOmFreezeBars(r.bars)).catch(() => setOmFreezeBars([]));
@@ -244,13 +244,6 @@ export default function ResultsStage() {
     } finally { setChartLoading(false); }
   };
 
-  const loadScatter = async () => {
-    setScatterLoading(true);
-    try { const r = await getScatterData(token, units); setScatterPts(r.points); }
-    catch { setScatterPts([]); }
-    finally { setScatterLoading(false); }
-  };
-
   const loadHeatmap = async () => {
     setHeatLoading(true);
     try { const r = await getHeatmapData(token, units); setHeatCells(r.cells); }
@@ -266,13 +259,6 @@ export default function ResultsStage() {
   };
 
   const omToken = omResult?.om_token;
-  const loadOmScatter = async () => {
-    if (!omToken) return;
-    setOmScatterLoading(true);
-    try { const r = await getScatterData(omToken, units); setOmScatterPts(r.points); }
-    catch { setOmScatterPts([]); }
-    finally { setOmScatterLoading(false); }
-  };
   const loadOmHeatmap = async () => {
     if (!omToken) return;
     setOmHeatLoading(true);
@@ -548,27 +534,11 @@ export default function ResultsStage() {
       <Card title="NOAA — Charts">
         {/* Scatter */}
         <div className="mb-4">
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Weather scatter — Tdb vs Twb</p>
-            {!scatterPts && <span className="text-xs text-gray-400 animate-pulse">Loading…</span>}
-          </div>
-          {scatterPts && scatterPts.length > 0 && (
-            <ResponsiveContainer width="100%" height={280}>
-              <ScatterChart margin={{ top: 5, right: 10, bottom: 20, left: 20 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis dataKey="x" name={`Tdb (${sfx})`} type="number" domain={["auto","auto"]}
-                  label={{ value: `Dry bulb (${sfx})`, position: "insideBottom", offset: -10 }} tick={{ fontSize: 11 }} />
-                <YAxis dataKey="y" name={`Twb (${sfx})`} type="number" domain={["auto","auto"]}
-                  label={{ value: `Wet bulb (${sfx})`, angle: -90, position: "insideLeft" }} tick={{ fontSize: 11 }} />
-                <ZAxis range={[2, 2]} />
-                <RCTooltip cursor={{ strokeDasharray: "3 3" }}
-                  formatter={(v: number, n: string) => [`${v.toFixed(1)}${sfx}`, n]} />
-                <ReferenceLine x={nTdb ?? undefined} stroke="#00B050" strokeDasharray="4 2" />
-                <ReferenceLine y={nTwb ?? undefined} stroke="#00B050" strokeDasharray="4 2" />
-                <Scatter data={scatterPts} fill="#378ADD" fillOpacity={0.15} />
-              </ScatterChart>
-            </ResponsiveContainer>
-          )}
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Weather scatter — Tdb vs Twb</p>
+          {!scatterPts
+            ? <span className="text-xs text-gray-400 animate-pulse">Loading…</span>
+            : <WeatherScatter token={token} units={units} points={scatterPts} refX={nTdb} refY={nTwb} sfx={sfx} />
+          }
         </div>
 
         {/* Freezing bar */}
@@ -646,27 +616,11 @@ export default function ResultsStage() {
         <Card title="Open-Meteo ERA5 — Charts">
           {/* Scatter */}
           <div className="mb-4">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Weather scatter — Tdb vs Twb</p>
-              {!omScatterPts && <span className="text-xs text-gray-400 animate-pulse">Loading…</span>}
-            </div>
-            {omScatterPts && omScatterPts.length > 0 && (
-              <ResponsiveContainer width="100%" height={280}>
-                <ScatterChart margin={{ top: 5, right: 10, bottom: 20, left: 20 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                  <XAxis dataKey="x" name={`Tdb (${sfx})`} type="number" domain={["auto","auto"]}
-                    label={{ value: `Dry bulb (${sfx})`, position: "insideBottom", offset: -10 }} tick={{ fontSize: 11 }} />
-                  <YAxis dataKey="y" name={`Twb (${sfx})`} type="number" domain={["auto","auto"]}
-                    label={{ value: `Wet bulb (${sfx})`, angle: -90, position: "insideLeft" }} tick={{ fontSize: 11 }} />
-                  <ZAxis range={[2, 2]} />
-                  <RCTooltip cursor={{ strokeDasharray: "3 3" }}
-                    formatter={(v: number, n: string) => [`${v.toFixed(1)}${sfx}`, n]} />
-                  <ReferenceLine x={omTdb ?? undefined} stroke="#10b981" strokeDasharray="4 2" />
-                  <ReferenceLine y={omTwb ?? undefined} stroke="#10b981" strokeDasharray="4 2" />
-                  <Scatter data={omScatterPts} fill="#10b981" fillOpacity={0.4} />
-                </ScatterChart>
-              </ResponsiveContainer>
-            )}
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Weather scatter — Tdb vs Twb</p>
+            {!omScatterPts
+              ? <span className="text-xs text-gray-400 animate-pulse">Loading…</span>
+              : <WeatherScatter token={omToken!} units={units} points={omScatterPts} refX={omTdb} refY={omTwb} accentColor="#10b981" sfx={sfx} />
+            }
           </div>
 
           {/* Freezing bar */}
