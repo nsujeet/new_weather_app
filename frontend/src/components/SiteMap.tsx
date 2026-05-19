@@ -1,6 +1,7 @@
 /**
  * SiteMap — Leaflet map: site marker + NOAA station circles + 30mi radius
  */
+import { useState } from "react";
 import { MapContainer, TileLayer, Marker, CircleMarker, Circle, Popup } from "react-leaflet";
 import L from "leaflet";
 import type { NoaaStation, AshraStation } from "../api";
@@ -43,6 +44,9 @@ export default function SiteMap({
   selectedStation,
   onSelectStation,
 }: Props) {
+  const [showNoaa,   setShowNoaa]   = useState(true);
+  const [showAshrae, setShowAshrae] = useState(true);
+
   return (
     <div className="rounded-lg overflow-hidden border border-gray-200">
       <MapContainer
@@ -66,7 +70,7 @@ export default function SiteMap({
         />
 
         {/* ASHRAE stations (rendered below NOAA so NOAA is on top) */}
-        {ashraStations.map((s) => {
+        {showAshrae && ashraStations.map((s) => {
           if (s.lat == null || s.lon == null) return null;
           return (
             <CircleMarker
@@ -94,7 +98,7 @@ export default function SiteMap({
         })}
 
         {/* NOAA station circles */}
-        {noaaStations.map((s) => {
+        {showNoaa && noaaStations.map((s) => {
           if (s.LATITUDE == null || s.LONGITUDE == null) return null;
           const isSelected = s.GHCN_ID === selectedStation;
           const fill = isSelected ? "#3b82f6" : (STATUS_COLOR[s.recommendation_status ?? ""] ?? "#9ca3af");
@@ -139,9 +143,33 @@ export default function SiteMap({
           </Popup>
         </Marker>
       </MapContainer>
-      <p className="text-xs text-gray-400 px-2 py-1">
-        🔵 NOAA stations · 🟠 ASHRAE stations · Select a NOAA station — ASHRAE shown for comparison only.
-      </p>
+      <div className="flex items-center gap-3 px-2 py-1 flex-wrap">
+        <button
+          onClick={() => setShowNoaa((v) => !v)}
+          className="flex items-center gap-1.5 text-xs px-2 py-0.5 rounded border transition-colors"
+          style={{
+            borderColor: showNoaa ? "#3b82f6" : "#4b5563",
+            background:  showNoaa ? "#1e3a5f" : "transparent",
+            color:       showNoaa ? "#93c5fd"  : "#6b7280",
+          }}
+        >
+          <span style={{ width: 10, height: 10, borderRadius: "50%", background: showNoaa ? "#3b82f6" : "#4b5563", display: "inline-block" }} />
+          NOAA
+        </button>
+        <button
+          onClick={() => setShowAshrae((v) => !v)}
+          className="flex items-center gap-1.5 text-xs px-2 py-0.5 rounded border transition-colors"
+          style={{
+            borderColor: showAshrae ? "#f97316" : "#4b5563",
+            background:  showAshrae ? "#431407" : "transparent",
+            color:       showAshrae ? "#fdba74"  : "#6b7280",
+          }}
+        >
+          <span style={{ width: 10, height: 10, borderRadius: "50%", background: showAshrae ? "#f97316" : "#4b5563", display: "inline-block" }} />
+          ASHRAE
+        </button>
+        <span className="text-xs text-gray-500">Select a NOAA station — ASHRAE for reference only.</span>
+      </div>
     </div>
   );
 }
