@@ -800,7 +800,7 @@ export default function ResultsStage() {
                       >
                         {colsShow.map((c) => (
                           <td key={c} className="py-0.5 px-2 font-mono text-right first:text-left">
-                            {c === "%" ? row[c] : Number(row[c]).toFixed(1)}
+                            {c === "%" ? String(row[c] ?? "") : Number(row[c]).toFixed(1)}
                           </td>
                         ))}
                       </tr>

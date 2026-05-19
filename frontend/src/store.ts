@@ -6,7 +6,7 @@ import type { SiteInfo, NoaaStation, AshraStation, ProcessResult, OmResult, Filt
 
 export type Stage = "site" | "station" | "years" | "fetch" | "filter" | "results";
 
-interface AppState {
+export interface AppState {
   // Step 0
   units: "F" | "C";
   setUnits: (u: "F" | "C") => void;

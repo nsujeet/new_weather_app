@@ -1,11 +1,12 @@
 import { useRef, useState } from "react";
 import { useStore } from "../store";
+import type { AppState } from "../store";
 
 const BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000/api";
 
 interface Msg { role: "user" | "assistant"; content: string; }
 
-function buildContext(store: ReturnType<typeof useStore>) {
+function buildContext(store: AppState) {
   const { stage, units, lat, lon, siteInfo, selectedStation, selectedYears,
     ashraConditions, processResult } = store;
   return {

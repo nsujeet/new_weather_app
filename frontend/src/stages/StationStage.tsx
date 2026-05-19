@@ -34,7 +34,7 @@ function getRowVal(stats: OmStat[], col: string, pct: number): number | null {
   if (!stats?.length) return null;
   let row = stats.find((r) => Number(r["%"]) === pct);
   if (!row) row = stats.reduce((best, r) => Math.abs(Number(r["%"]) - pct) < Math.abs(Number(best["%"]) - pct) ? r : best);
-  const v = (row as Record<string, unknown>)[col];
+  const v = (row as unknown as Record<string, unknown>)[col];
   return v != null && !Number.isNaN(Number(v)) ? Number(v) : null;
 }
 
