@@ -241,19 +241,36 @@ def site_confirm(req: SiteConfirmRequest, request: Request = None):
 
 @router.get("/stations")
 def get_stations(lat: float, lon: float, elevation_m: float = 0.0):
+    import pandas as pd
     from pipeline.stations import load_station_list, find_nearest_stations, recommend_station
     from pipeline.ashrae import get_ashrae_wmo
 
-    sdf    = load_station_list()
-    ranked = find_nearest_stations(lat, lon, elevation_m, sdf, n=10)
-    rec    = recommend_station(ranked)
+    noaa_records: list = []
+    rec_id: str | None  = None
+    rec_msg: str | None = None
+    noaa_error: str | None = None
+
+    try:
+        sdf    = load_station_list()
+        ranked = find_nearest_stations(lat, lon, elevation_m, sdf, n=10)
+        rec    = recommend_station(ranked)
+        rec_id  = rec.get("station_id")
+        rec_msg = rec.get("message")
+        # Replace NaN with None so JSON serialization works for non-US stations
+        # (STATE and other string cols are NaN for international entries)
+        noaa_records = ranked.where(pd.notna(ranked), other=None).to_dict(orient="records")
+    except Exception as exc:
+        noaa_error = str(exc)
+
+    # Fetch ASHRAE independently — must succeed even if NOAA fails
     ashrae = get_ashrae_wmo(lat, lon, n_stations=5).get("stations", [])
 
     return {
-        "noaa": ranked.to_dict(orient="records"),
-        "recommended_station_id": rec.get("station_id"),
-        "recommendation_message": rec.get("message"),
+        "noaa": noaa_records,
+        "recommended_station_id": rec_id,
+        "recommendation_message": rec_msg,
         "ashrae": ashrae,
+        "noaa_error": noaa_error,
     }
 
 

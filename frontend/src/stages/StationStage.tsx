@@ -50,6 +50,7 @@ export default function StationStage() {
 
   const [loading,      setLoading]      = useState(false);
   const [error,        setError]        = useState<string | null>(null);
+  const [noaaError,    setNoaaError]    = useState<string | null>(null);
   const [ashraLoading, setAshraLoading] = useState(false);
 
   // ERA5 quick-estimate section
@@ -99,7 +100,10 @@ export default function StationStage() {
     if (lat == null || lon == null) return;
     setLoading(true);
     getStations(lat, lon, siteInfo?.elevation_m ?? 0)
-      .then((r) => setStations(r.noaa, r.ashrae, r.recommended_station_id))
+      .then((r) => {
+        setStations(r.noaa, r.ashrae, r.recommended_station_id);
+        if (r.noaa_error) setNoaaError(r.noaa_error);
+      })
       .catch((e: unknown) => setError(e instanceof Error ? e.message : "Station lookup failed"))
       .finally(() => setLoading(false));
   }, [lat, lon]);
@@ -385,6 +389,11 @@ export default function StationStage() {
         {/* NOAA cards */}
         <div>
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">NOAA Stations</p>
+          {noaaError && (
+            <p className="text-xs text-orange-400 mb-2">
+              NOAA unavailable for this location — use ASHRAE reference data instead.
+            </p>
+          )}
           <div className="space-y-2">
             {noaaStations.map((s) => {
               const selected = s.GHCN_ID === selectedStation;

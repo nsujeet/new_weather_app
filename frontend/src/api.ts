@@ -42,6 +42,7 @@ export interface StationsResult {
   recommended_station_id: string | null;
   recommendation_message: string;
   ashrae: AshraStation[];
+  noaa_error?: string | null;
 }
 
 export interface DesignConditions {
