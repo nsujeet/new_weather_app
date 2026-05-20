@@ -178,9 +178,7 @@ def get_utc_offset_hours(latitude: float, longitude: float) -> float:
 
     tz_name = get_timezone_name(latitude, longitude)
     if tz_name is None:
-        raise ValueError(
-            f"Could not determine timezone for lat={latitude}, lon={longitude}"
-        )
+        return 0.0  # ocean or unmapped coordinate — default to UTC
 
     timezone   = ZoneInfo(tz_name)
     local_time = datetime.datetime.now(timezone)
