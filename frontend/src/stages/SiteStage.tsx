@@ -9,9 +9,13 @@ import Card from "../components/Card";
 interface GeoResult { display_name: string; lat: number; lon: number; }
 
 export default function SiteStage() {
-  const { units, setSite, advanceTo, setOmResult, setOmLoading, setOmError } = useStore();
-  const [lat,        setLat]        = useState("");
-  const [lon,        setLon]        = useState("");
+  const {
+    units, setSite, advanceTo, setStage,
+    setOmResult, setOmLoading, setOmError,
+    lat: storedLat, lon: storedLon,
+  } = useStore();
+  const [lat, setLat] = useState(storedLat != null ? storedLat.toFixed(6) : "");
+  const [lon, setLon] = useState(storedLon != null ? storedLon.toFixed(6) : "");
   const [query,      setQuery]      = useState("");
   const [results,    setResults]    = useState<GeoResult[]>([]);
   const [searching,  setSearching]  = useState(false);
@@ -138,13 +142,27 @@ export default function SiteStage() {
 
       {error && <p style={{ color: "#ff6b6b", fontSize: "13px", marginBottom: "10px" }}>{error}</p>}
 
-      <button
-        onClick={handleConfirm}
-        disabled={loading}
-        className="wa-btn wa-btn-primary"
-      >
-        {loading ? "Looking up site…" : "✓ Confirm Site →"}
-      </button>
+      <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+        <button
+          onClick={handleConfirm}
+          disabled={loading}
+          className="wa-btn wa-btn-primary"
+        >
+          {loading ? "Looking up site…" : "✓ Confirm Site →"}
+        </button>
+        {storedLat != null && (
+          <button
+            onClick={() => setStage("station")}
+            style={{
+              padding: "6px 14px", borderRadius: "6px", fontSize: "12px",
+              background: "transparent", border: "1px solid var(--wa-border)",
+              color: "var(--wa-text-dim)", cursor: "pointer",
+            }}
+          >
+            ← Keep current
+          </button>
+        )}
+      </div>
     </Card>
   );
 }
