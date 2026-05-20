@@ -382,10 +382,14 @@ def score_filters_endpoint(token: str = Query(...), exclude_quality_codes: list[
 #  /availability — which years exist on NOAA
 # ─────────────────────────────────────────────────────────────────
 
+_AVAIL_CACHE_DIR = os.path.join(os.path.dirname(__file__), "..", ".avail_cache")
+
+
 @router.get("/availability")
 def check_availability(station_id: str, year_start: int = 2000, year_end: int = 2025):
     from pipeline.download import get_available_years
-    years = get_available_years(station_id, range(year_start, year_end + 1), cache_dir="")
+    years = get_available_years(station_id, range(year_start, year_end + 1),
+                                cache_dir=_AVAIL_CACHE_DIR)
     return {"station_id": station_id, "available_years": sorted(years)}
 
 
@@ -393,8 +397,8 @@ def check_availability(station_id: str, year_start: int = 2000, year_end: int = 
 def bulk_availability(station_ids: str, year_start: int = 2015, year_end: int = 2024):
     """
     Check NOAA data availability for multiple stations in one call.
+    Results are disk-cached for 7 days so repeat queries are instant.
     station_ids: comma-separated list of GHCN IDs.
-    Returns {station_id: [available_years]} for each station.
     """
     from pipeline.download import get_available_years
     from concurrent.futures import ThreadPoolExecutor
@@ -405,7 +409,8 @@ def bulk_availability(station_ids: str, year_start: int = 2015, year_end: int = 
 
     def _check(sid: str):
         try:
-            return sid, get_available_years(sid, range(year_start, year_end + 1), cache_dir="")
+            return sid, get_available_years(sid, range(year_start, year_end + 1),
+                                            cache_dir=_AVAIL_CACHE_DIR)
         except Exception:
             return sid, []
 
