@@ -64,14 +64,6 @@ def get_elevation_m(latitude: float, longitude: float,
     """
     Get elevation in metres for a lat/lon using Open-Meteo elevation API.
     Free, no API key required, more reliable than open-elevation.com.
-
-    Args:
-        latitude:  decimal degrees
-        longitude: decimal degrees
-        timeout:   request timeout in seconds
-
-    Returns:
-        Elevation in metres, or None if the API call fails.
     """
     url = "https://api.open-meteo.com/v1/elevation"
     try:
@@ -88,6 +80,44 @@ def get_elevation_m(latitude: float, longitude: float,
         return None
     except Exception:
         return None
+
+
+def get_site_info_om(
+    latitude: float,
+    longitude: float,
+    timeout: int = 10,
+) -> dict:
+    """
+    Single Open-Meteo forecast call that returns elevation, timezone name, and
+    UTC offset — works for land AND ocean coordinates (OM uses nearest-land
+    heuristic for timezone, unlike timezonefinder which returns None at sea).
+
+    Returns dict with keys: elevation_m, timezone, utc_offset_h
+    Falls back to safe defaults on any failure.
+    """
+    try:
+        resp = requests.get(
+            "https://api.open-meteo.com/v1/forecast",
+            params={
+                "latitude":     latitude,
+                "longitude":    longitude,
+                "timezone":     "auto",
+                "forecast_days": 0,       # no actual forecast data needed
+            },
+            timeout=timeout,
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            return {
+                "elevation_m":  float(data.get("elevation", 0.0)),
+                "timezone":     data.get("timezone", "UTC"),
+                "utc_offset_h": data.get("utc_offset_seconds", 0) / 3600,
+            }
+    except Exception:
+        pass
+    # Fallback: separate elevation call + default timezone
+    ele = get_elevation_m(latitude, longitude, timeout) or 0.0
+    return {"elevation_m": ele, "timezone": "UTC", "utc_offset_h": 0.0}
 
 
 def get_elevation_ft(latitude: float, longitude: float) -> float | None:

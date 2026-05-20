@@ -211,15 +211,13 @@ def geocode(q: str):
 
 @router.post("/site/confirm")
 def site_confirm(req: SiteConfirmRequest, request: Request = None):
-    from pipeline.geo_utils import get_elevation_m, calc_pressure_psi, get_timezone_name, get_utc_offset_hours
+    from pipeline.geo_utils import get_site_info_om, calc_pressure_psi
 
-    ele_m        = get_elevation_m(req.lat, req.lon) or 0.0
+    info         = get_site_info_om(req.lat, req.lon)
+    ele_m        = info["elevation_m"]
     pressure_psi = calc_pressure_psi(ele_m)
-    tz_name      = get_timezone_name(req.lat, req.lon) or "Unknown"
-    try:
-        utc_offset = get_utc_offset_hours(req.lat, req.lon)
-    except Exception:
-        utc_offset = 0.0
+    tz_name      = info["timezone"] or "Unknown"
+    utc_offset   = info["utc_offset_h"]
 
     try:
         from utils.logger import log_event
