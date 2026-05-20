@@ -3,7 +3,7 @@
  */
 import { useEffect, useState, Suspense, lazy } from "react";
 import { useStore } from "../store";
-import { getStations, getAshraConditions, getPsychroChart, getScatterData, getHeatmapData, getFreezingData, getOpenMeteo } from "../api";
+import { getStations, getAshraConditions, getPsychroChart, getScatterData, getHeatmapData, getFreezingData, getOpenMeteo, getBulkAvailability } from "../api";
 import type { AshraConditionResult, OmStat } from "../api";
 import Card from "../components/Card";
 import {
@@ -52,6 +52,8 @@ export default function StationStage() {
   const [error,        setError]        = useState<string | null>(null);
   const [noaaError,    setNoaaError]    = useState<string | null>(null);
   const [ashraLoading, setAshraLoading] = useState(false);
+  const [availMap,     setAvailMap]     = useState<Record<string, number[]>>({});
+  const [availLoading, setAvailLoading] = useState(false);
 
   // ERA5 quick-estimate section
   const [era5Open,       setEra5Open]       = useState(true);
@@ -103,6 +105,27 @@ export default function StationStage() {
       .then((r) => {
         setStations(r.noaa, r.ashrae, r.recommended_station_id);
         if (r.noaa_error) setNoaaError(r.noaa_error);
+
+        // Background: check data availability for all ranked stations
+        const ids = r.noaa.map((s) => s.GHCN_ID);
+        if (ids.length > 0) {
+          setAvailLoading(true);
+          getBulkAvailability(ids)
+            .then((avail) => {
+              setAvailMap(avail);
+              // Auto-promote: if recommended has no recent data, pick station
+              // with the most years instead
+              const recId = r.recommended_station_id ?? ids[0];
+              if ((avail[recId]?.length ?? 0) === 0) {
+                const best = ids
+                  .map((id) => ({ id, n: avail[id]?.length ?? 0 }))
+                  .sort((a, b) => b.n - a.n)[0];
+                if (best && best.n > 0) selectStation(best.id);
+              }
+            })
+            .catch(() => {})
+            .finally(() => setAvailLoading(false));
+        }
       })
       .catch((e: unknown) => setError(e instanceof Error ? e.message : "Station lookup failed"))
       .finally(() => setLoading(false));
@@ -388,7 +411,10 @@ export default function StationStage() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
         {/* NOAA cards */}
         <div>
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">NOAA Stations</p>
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+            NOAA Stations
+            {availLoading && <span className="ml-2 font-normal normal-case text-[#4f8ef7] animate-pulse">checking data…</span>}
+          </p>
           {noaaError && (
             <p className="text-xs text-orange-400 mb-2">
               NOAA unavailable for this location — use ASHRAE reference data instead.
@@ -396,7 +422,15 @@ export default function StationStage() {
           )}
           <div className="space-y-2">
             {noaaStations.map((s) => {
-              const selected = s.GHCN_ID === selectedStation;
+              const selected   = s.GHCN_ID === selectedStation;
+              const years      = availMap[s.GHCN_ID];
+              const yearCount  = years?.length ?? null;
+              const availBadge = availLoading && yearCount === null ? null : yearCount === null ? null
+                : yearCount === 0
+                  ? <span className="text-xs px-1.5 py-0.5 rounded bg-red-950 border border-red-800 text-red-400 whitespace-nowrap">No data</span>
+                  : yearCount < 5
+                    ? <span className="text-xs px-1.5 py-0.5 rounded bg-yellow-950 border border-yellow-800 text-yellow-400 whitespace-nowrap">{yearCount} yrs</span>
+                    : <span className="text-xs px-1.5 py-0.5 rounded bg-green-950 border border-green-800 text-green-400 whitespace-nowrap">{yearCount} yrs</span>;
               return (
                 <button
                   key={s.GHCN_ID}
@@ -409,6 +443,7 @@ export default function StationStage() {
                     <span className={`w-2 h-2 rounded-full shrink-0 ${STATUS_DOT[s.recommendation_status ?? ""] ?? "bg-gray-300"}`} />
                     {s.GHCN_ID === recommendedStationId && <span className="text-yellow-500 text-xs">★</span>}
                     <span className="font-medium truncate">{s.NAME}</span>
+                    {availBadge && <span className="ml-auto shrink-0">{availBadge}</span>}
                   </div>
                   <p className="text-xs text-gray-400">
                     {s.GHCN_ID} · {fmt(s.dist_miles, "mi", 1)} · Δelev {fmt(s.elev_delta_ft, "ft")}

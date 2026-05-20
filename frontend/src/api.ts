@@ -138,6 +138,13 @@ export const checkAvailability = (station_id: string, year_start = 2000, year_en
     })
     .then((r) => r.data);
 
+export const getBulkAvailability = (station_ids: string[], year_start = 2015, year_end = new Date().getFullYear() - 1) =>
+  http
+    .get<{ availability: Record<string, number[]> }>("/bulk-availability", {
+      params: { station_ids: station_ids.join(","), year_start, year_end },
+    })
+    .then((r) => r.data.availability);
+
 export const processData = (
   token: string,
   params: {

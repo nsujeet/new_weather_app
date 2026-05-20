@@ -389,6 +389,32 @@ def check_availability(station_id: str, year_start: int = 2000, year_end: int = 
     return {"station_id": station_id, "available_years": sorted(years)}
 
 
+@router.get("/bulk-availability")
+def bulk_availability(station_ids: str, year_start: int = 2015, year_end: int = 2024):
+    """
+    Check NOAA data availability for multiple stations in one call.
+    station_ids: comma-separated list of GHCN IDs.
+    Returns {station_id: [available_years]} for each station.
+    """
+    from pipeline.download import get_available_years
+    from concurrent.futures import ThreadPoolExecutor
+
+    ids = [s.strip() for s in station_ids.split(",") if s.strip()]
+    if not ids:
+        return {"availability": {}}
+
+    def _check(sid: str):
+        try:
+            return sid, get_available_years(sid, range(year_start, year_end + 1), cache_dir="")
+        except Exception:
+            return sid, []
+
+    with ThreadPoolExecutor(max_workers=min(len(ids), 10)) as pool:
+        results = dict(pool.map(_check, ids))
+
+    return {"availability": results}
+
+
 # ─────────────────────────────────────────────────────────────────
 #  /fetch  — SSE stream: download NOAA years with progress
 # ─────────────────────────────────────────────────────────────────
