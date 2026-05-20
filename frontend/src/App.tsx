@@ -240,7 +240,6 @@ export default function App() {
   } = appStore;
 
   const [userEmail, setUserEmail] = useState<string>("");
-  const [mobileChatOpen, setMobileChatOpen] = useState(false);
 
   useEffect(() => {
     fetch(`${BASE}/auth/me`, { credentials: "include" })
@@ -383,17 +382,6 @@ export default function App() {
         </a>
       </footer>
 
-      {/* Mobile chat FAB */}
-      <button className="wa-chat-fab" onClick={() => setMobileChatOpen(true)}>💬</button>
-
-      {/* Mobile chat overlay */}
-      <div className={`wa-mobile-chat-overlay${mobileChatOpen ? " open" : ""}`}>
-        <div className="wa-mobile-chat-overlay-header">
-          <span>Ask a question</span>
-          <button className="wa-mobile-chat-overlay-close" onClick={() => setMobileChatOpen(false)}>✕ Close</button>
-        </div>
-        <ChatPanel suggestions={getSuggestions(stage, appStore)} />
-      </div>
     </div>
   );
 }
