@@ -115,7 +115,7 @@ export default function SiteStage() {
                 key={i}
                 onClick={() => pickResult(r)}
                 className="w-full text-left px-3 py-2 text-xs border-b last:border-0"
-                style={{ color: "var(--wa-text)", borderColor: "var(--wa-border)", background: "transparent" }}
+                style={{ color: "var(--wa-text)", borderColor: "var(--wa-border)", background: "transparent", wordBreak: "break-word", overflowWrap: "break-word" }}
                 onMouseEnter={(e) => (e.currentTarget.style.background = "var(--wa-accent-dim)")}
                 onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
               >

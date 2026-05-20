@@ -5,6 +5,7 @@
   flex-direction: column;
   height: 100dvh;
   overflow: hidden;
+  overflow-x: hidden;
   background: var(--wa-bg);
   color: var(--wa-text);
 }
@@ -326,7 +327,70 @@
 }
 .wa-btn-outline:hover:not(:disabled) { border-color: var(--wa-accent); color: var(--wa-accent); opacity: 1; }
 
+/* ── Mobile chat FAB + overlay ───────────────────────────────── */
+
+.wa-chat-fab {
+  display: none;
+  position: fixed;
+  bottom: 64px;
+  right: 16px;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--wa-accent);
+  color: #fff;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+  z-index: 100;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.35);
+  transition: opacity 0.15s;
+}
+.wa-chat-fab:hover { opacity: 0.88; }
+
+.wa-mobile-chat-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  flex-direction: column;
+  background: var(--wa-bg);
+}
+
+.wa-mobile-chat-overlay.open { display: flex; }
+
+.wa-mobile-chat-overlay-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--wa-border);
+  background: var(--wa-surface);
+  flex-shrink: 0;
+}
+
+.wa-mobile-chat-overlay-header span {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--wa-text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.wa-mobile-chat-overlay-close {
+  background: none;
+  border: 1px solid var(--wa-border);
+  border-radius: 6px;
+  color: var(--wa-text-dim);
+  font-size: 12px;
+  padding: 4px 12px;
+  cursor: pointer;
+}
+
 /* Mobile */
 @media (max-width: 640px) {
   .wa-chat { display: none; }
+  .wa-chat-fab { display: flex; }
 }
