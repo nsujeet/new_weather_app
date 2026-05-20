@@ -330,4 +330,5 @@
 /* Mobile */
 @media (max-width: 640px) {
   .wa-chat { display: none; }
+  input, textarea, select { font-size: 16px !important; }
 }
