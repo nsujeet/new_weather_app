@@ -44,15 +44,15 @@ export default function StationStage() {
     noaaStations, ashraStations, selectedStation, recommendedStationId, ashraConditions,
     ashraEdition: edition, ashraLevel: acfLevel,
     omResult, omLoading, omError,
+    stationAvailMap, setStationAvailMap,
     setStations, selectStation, setAshraConditions, setAshraEdition: setEdition, setAshraLevel: setAcfLevel, advanceTo,
-    setOmResult, setOmLoading, setOmError,
+    setOmResult, setOmLoading, setOmError, setAvailableYears,
   } = useStore();
 
   const [loading,      setLoading]      = useState(false);
   const [error,        setError]        = useState<string | null>(null);
   const [noaaError,    setNoaaError]    = useState<string | null>(null);
   const [ashraLoading, setAshraLoading] = useState(false);
-  const [availMap,     setAvailMap]     = useState<Record<string, number[]>>({});
   const [availLoading, setAvailLoading] = useState(false);
 
   // ERA5 quick-estimate section
@@ -106,15 +106,15 @@ export default function StationStage() {
         setStations(r.noaa, r.ashrae, r.recommended_station_id);
         if (r.noaa_error) setNoaaError(r.noaa_error);
 
-        // Background: check data availability for all ranked stations
+        // Background: check full availability (2000→now) for all ranked stations.
+        // Results go into the store so YearsStage can reuse them without a second call.
         const ids = r.noaa.map((s) => s.GHCN_ID);
         if (ids.length > 0) {
           setAvailLoading(true);
-          getBulkAvailability(ids)
+          getBulkAvailability(ids, 2000, new Date().getFullYear())
             .then((avail) => {
-              setAvailMap(avail);
-              // Auto-promote: if recommended has no recent data, pick station
-              // with the most years instead
+              setStationAvailMap(avail);
+              // Auto-promote: if recommended has no data, pick station with most years
               const recId = r.recommended_station_id ?? ids[0];
               if ((avail[recId]?.length ?? 0) === 0) {
                 const best = ids
@@ -423,7 +423,7 @@ export default function StationStage() {
           <div className="space-y-2">
             {noaaStations.map((s) => {
               const selected   = s.GHCN_ID === selectedStation;
-              const years      = availMap[s.GHCN_ID];
+              const years      = stationAvailMap[s.GHCN_ID];
               const yearCount  = years?.length ?? null;
               const availBadge = availLoading && yearCount === null ? null : yearCount === null ? null
                 : yearCount === 0
@@ -544,7 +544,12 @@ export default function StationStage() {
       )}
 
       <button
-        onClick={() => advanceTo("years")}
+        onClick={() => {
+          // Pre-populate years from bulk check so YearsStage skips its own call
+          const cached = selectedStation ? stationAvailMap[selectedStation] : undefined;
+          if (cached && cached.length > 0) setAvailableYears(cached);
+          advanceTo("years");
+        }}
         disabled={!selectedStation}
         className="wa-btn wa-btn-primary"
       >

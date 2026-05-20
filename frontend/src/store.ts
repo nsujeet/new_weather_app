@@ -27,6 +27,10 @@ export interface AppState {
   selectStation: (id: string) => void;
   setAshraConditions: (c: AshraConditionResult[]) => void;
 
+  // Availability cache from bulk check (station_id → available years)
+  stationAvailMap: Record<string, number[]>;
+  setStationAvailMap: (m: Record<string, number[]>) => void;
+
   // Stage 1 — years
   availableYears: number[];
   selectedYears: number[];
@@ -102,6 +106,7 @@ const initial = {
   selectedStation: null,
   recommendedStationId: null,
   ashraConditions: [],
+  stationAvailMap: {} as Record<string, number[]>,
   availableYears: [],
   selectedYears: [],
   fetchToken: null,
@@ -131,6 +136,7 @@ export const useStore = create<AppState>((set, get) => ({
     // Clear downstream so StationStage refetches for the new location
     noaaStations: [], ashraStations: [], selectedStation: null,
     recommendedStationId: null, ashraConditions: [],
+    stationAvailMap: {}, availableYears: [],
     omResult: null,  // ERA5 re-fetched in SiteStage.handleConfirm after this
   }),
 
@@ -142,6 +148,7 @@ export const useStore = create<AppState>((set, get) => ({
       recommendedStationId: recommended,
     }),
 
+  setStationAvailMap: (m) => set({ stationAvailMap: m }),
   selectStation: (id) => set({ selectedStation: id }),
   setAshraConditions: (c) => set({ ashraConditions: c }),
 
