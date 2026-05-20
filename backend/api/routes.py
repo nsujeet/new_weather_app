@@ -242,7 +242,6 @@ def site_confirm(req: SiteConfirmRequest, request: Request = None):
 
 @router.get("/stations")
 def get_stations(lat: float, lon: float, elevation_m: float = 0.0):
-    import pandas as pd
     from pipeline.stations import load_station_list, find_nearest_stations, recommend_station
     from pipeline.ashrae import get_ashrae_wmo
 
@@ -257,9 +256,9 @@ def get_stations(lat: float, lon: float, elevation_m: float = 0.0):
         rec    = recommend_station(ranked)
         rec_id  = rec.get("station_id")
         rec_msg = rec.get("message")
-        # Replace NaN with None so JSON serialization works for non-US stations
-        # (STATE and other string cols are NaN for international entries)
-        noaa_records = ranked.where(pd.notna(ranked), other=None).to_dict(orient="records")
+        # to_json converts NaN→null then loads gives None — more reliable than
+        # df.where() which can silently reintroduce NaN for numeric columns
+        noaa_records = json.loads(ranked.to_json(orient="records"))
     except Exception as exc:
         noaa_error = str(exc)
 

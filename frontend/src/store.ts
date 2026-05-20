@@ -126,7 +126,13 @@ export const useStore = create<AppState>((set, get) => ({
 
   setUnits: (u) => set({ units: u }),
 
-  setSite: (lat, lon, info) => set({ lat, lon, siteInfo: info }),
+  setSite: (lat, lon, info) => set({
+    lat, lon, siteInfo: info,
+    // Clear downstream so StationStage refetches for the new location
+    noaaStations: [], ashraStations: [], selectedStation: null,
+    recommendedStationId: null, ashraConditions: [],
+    omResult: null,  // ERA5 re-fetched in SiteStage.handleConfirm after this
+  }),
 
   setStations: (noaa, ashra, recommended) =>
     set({
