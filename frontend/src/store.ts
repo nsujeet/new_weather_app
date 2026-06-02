@@ -153,7 +153,8 @@ export const useStore = create<AppState>((set, get) => ({
   setAshraConditions: (c) => set({ ashraConditions: c }),
 
   setAvailableYears: (years) => {
-    const sorted = [...years].sort((a, b) => a - b);
+    const lastFullYear = new Date().getFullYear() - 1;
+    const sorted = [...years].filter((y) => y <= lastFullYear).sort((a, b) => a - b);
     const last10 = sorted.slice(-10);
     set({ availableYears: years, selectedYears: last10 });
   },
