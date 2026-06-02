@@ -6,7 +6,8 @@ import { useStore } from "../store";
 import { checkAvailability } from "../api";
 import Card from "../components/Card";
 
-const ALL_YEARS = Array.from({ length: 26 }, (_, i) => 2000 + i); // 2000â€“2025
+const THIS_YEAR = new Date().getFullYear();
+const ALL_YEARS = Array.from({ length: THIS_YEAR - 1999 }, (_, i) => 2000 + i);
 
 export default function YearsStage() {
   const { selectedStation, availableYears, selectedYears, cachedYears,
@@ -29,7 +30,7 @@ export default function YearsStage() {
   const cached = new Set(cachedYears);
 
   const selectAll  = () => setSelectedYears(availableYears.filter((y) => y >= 2000));
-  const selectLast10 = () => setSelectedYears(availableYears.filter((y) => y >= 2015));
+  const selectLast10 = () => setSelectedYears([...availableYears].sort((a, b) => a - b).slice(-10));
   const clearAll   = () => setSelectedYears([]);
 
   return (
