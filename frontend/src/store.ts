@@ -54,6 +54,16 @@ export interface AppState {
   setOmLoading: (v: boolean) => void;
   setOmError: (e: string | null) => void;
 
+  // ERA5 chart cache — persists across navigation, cleared on new site
+  omDensity: { cells: {x:number;y:number;v:number}[]; x_width:number; y_height:number; max_v:number; units:string } | null;
+  omPsychroB64: string | null;
+  omFreezeBars: {week:number;hours:number}[] | null;
+  omHeatCells: {month:string;year:number;value:number}[] | null;
+  setOmDensity: (d: AppState["omDensity"]) => void;
+  setOmPsychroB64: (b: string | null) => void;
+  setOmFreezeBars: (b: AppState["omFreezeBars"]) => void;
+  setOmHeatCells: (c: AppState["omHeatCells"]) => void;
+
   // ASHRAE edition + level (persisted so navigation doesn't reset them)
   ashraEdition: string;
   ashraLevel: "0.4" | "1" | "2";
@@ -101,6 +111,10 @@ const initial = {
   omResult: null,
   omLoading: false,
   omError: null,
+  omDensity: null,
+  omPsychroB64: null,
+  omFreezeBars: null,
+  omHeatCells: null,
   noaaStations: [],
   ashraStations: [],
   selectedStation: null,
@@ -138,6 +152,7 @@ export const useStore = create<AppState>((set, get) => ({
     recommendedStationId: null, ashraConditions: [],
     stationAvailMap: {}, availableYears: [],
     omResult: null,  // ERA5 re-fetched in SiteStage.handleConfirm after this
+    omDensity: null, omPsychroB64: null, omFreezeBars: null, omHeatCells: null,
   }),
 
   setStations: (noaa, ashra, recommended) =>
@@ -175,6 +190,10 @@ export const useStore = create<AppState>((set, get) => ({
   setOmResult: (r) => set({ omResult: r }),
   setOmLoading: (v) => set({ omLoading: v }),
   setOmError: (e) => set({ omError: e }),
+  setOmDensity: (d) => set({ omDensity: d }),
+  setOmPsychroB64: (b) => set({ omPsychroB64: b }),
+  setOmFreezeBars: (b) => set({ omFreezeBars: b }),
+  setOmHeatCells: (c) => set({ omHeatCells: c }),
 
   setAshraEdition: (e) => set({ ashraEdition: e }),
   setAshraLevel: (l) => set({ ashraLevel: l }),

@@ -44,9 +44,11 @@ export default function StationStage() {
     noaaStations, ashraStations, selectedStation, recommendedStationId, ashraConditions,
     ashraEdition: edition, ashraLevel: acfLevel,
     omResult, omLoading, omError,
+    omDensity, omPsychroB64, omFreezeBars, omHeatCells,
     stationAvailMap, setStationAvailMap,
     setStations, selectStation, setAshraConditions, setAshraEdition: setEdition, setAshraLevel: setAcfLevel, advanceTo,
     setOmResult, setOmLoading, setOmError, setAvailableYears,
+    setOmDensity, setOmPsychroB64, setOmFreezeBars, setOmHeatCells,
   } = useStore();
 
   const [loading,      setLoading]      = useState(false);
@@ -58,6 +60,10 @@ export default function StationStage() {
   // ERA5 quick-estimate section
   const [era5Open,       setEra5Open]       = useState(true);
   const [chartError,     setChartError]     = useState<string | null>(null);
+  const [scatterLoading, setScatterLoading] = useState(false);
+  const [psychroLoading, setPsychroLoading] = useState(false);
+  const [heatLoading,    setHeatLoading]    = useState(false);
+  const [freezeLoading,  setFreezeLoading]  = useState(false);
 
   // Resolve a valid om_token — refetches ERA5 if server was restarted and token expired
   const resolveOmToken = async (): Promise<string | null> => {
@@ -80,15 +86,16 @@ export default function StationStage() {
       return null;
     }
   };
-  type DensityResult = { cells: {x:number;y:number;v:number}[]; x_width:number; y_height:number; max_v:number };
-  const [scatterDensity, setScatterDensity] = useState<DensityResult | null>(null);
-  const [scatterLoading, setScatterLoading] = useState(false);
-  const [psychroB64,     setPsychroB64]     = useState<string | null>(null);
-  const [psychroLoading, setPsychroLoading] = useState(false);
-  const [heatCells,      setHeatCells]      = useState<{month:string;year:number;value:number}[]|null>(null);
-  const [heatLoading,    setHeatLoading]    = useState(false);
-  const [freezeBars,     setFreezeBars]     = useState<{week:number;hours:number}[]|null>(null);
-  const [freezeLoading,  setFreezeLoading]  = useState(false);
+
+  // Auto-load density chart when ERA5 data first arrives
+  useEffect(() => {
+    if (!omResult?.om_token || omDensity || scatterLoading) return;
+    setScatterLoading(true);
+    getDensityData(omResult.om_token, units, 60)
+      .then((d) => setOmDensity(d))
+      .catch(() => {})
+      .finally(() => setScatterLoading(false));
+  }, [omResult]);
 
   const sfx    = units === "C" ? "°C" : "°F";
   const si_ip  = units === "C" ? "SI" : "IP";
@@ -270,21 +277,21 @@ export default function StationStage() {
                       <span className="text-xs font-semibold text-gray-400">Weather density — Tdb vs Twb (15-yr hourly)</span>
                       <button onClick={async () => {
                         if (scatterLoading) return;
-                        if (scatterDensity) { setScatterDensity(null); return; }
+                        if (omDensity) { setOmDensity(null); return; }
                         setScatterLoading(true); setChartError(null);
                         try {
                           const tok = await resolveOmToken();
                           if (!tok) { setChartError("ERA5 token unavailable"); return; }
                           const d = await getDensityData(tok, units, 60);
-                          setScatterDensity(d);
+                          setOmDensity(d);
                         } catch (e) { setChartError("Density: " + (e instanceof Error ? e.message : String(e))); }
                         finally { setScatterLoading(false); }
                       }} className="text-xs px-2 py-0.5 rounded border border-[#2e3148] text-[#8b90a8] hover:border-[#4f8ef7] transition-colors">
-                        {scatterLoading ? "…" : scatterDensity ? "↺ reset" : "▶ run chart"}
+                        {scatterLoading ? "…" : omDensity ? "↺ reset" : "▶ run chart"}
                       </button>
                     </div>
-                    {scatterDensity && (() => {
-                      const { cells, x_width, y_height, max_v } = scatterDensity;
+                    {omDensity && (() => {
+                      const { cells, x_width, y_height, max_v } = omDensity;
                       if (!cells.length) return <p className="text-xs text-gray-500">No data</p>;
                       const xs = cells.map(c => c.x), ys = cells.map(c => c.y);
                       const minX = Math.min(...xs) - x_width / 2;
@@ -338,20 +345,20 @@ export default function StationStage() {
                       <span className="text-xs font-semibold text-gray-400">Psychrometric chart</span>
                       <button onClick={async () => {
                         if (psychroLoading) return;
-                        if (psychroB64) { setPsychroB64(null); return; }
+                        if (omPsychroB64) { setOmPsychroB64(null); return; }
                         setPsychroLoading(true); setChartError(null);
                         try {
                           const tok = await resolveOmToken();
                           if (!tok) { setChartError("ERA5 token unavailable"); return; }
                           const d = await getPsychroChart(tok, units);
-                          setPsychroB64(d.image_b64);
+                          setOmPsychroB64(d.image_b64);
                         } catch (e) { setChartError("Psychro: " + (e instanceof Error ? e.message : String(e))); }
                         finally { setPsychroLoading(false); }
                       }} className="text-xs px-2 py-0.5 rounded border border-[#2e3148] text-[#8b90a8] hover:border-[#4f8ef7] transition-colors">
-                        {psychroLoading ? "…" : psychroB64 ? "↺ reset" : "▶ run chart"}
+                        {psychroLoading ? "…" : omPsychroB64 ? "↺ reset" : "▶ run chart"}
                       </button>
                     </div>
-                    {psychroB64 && <img src={`data:image/png;base64,${psychroB64}`} alt="Psychrometric chart" className="w-full rounded" />}
+                    {omPsychroB64 && <img src={`data:image/png;base64,${omPsychroB64}`} alt="Psychrometric chart" className="w-full rounded" />}
                   </div>
 
                   {/* Freezing hours */}
@@ -360,22 +367,22 @@ export default function StationStage() {
                       <span className="text-xs font-semibold text-gray-400">Freezing hours per fiscal week</span>
                       <button onClick={async () => {
                         if (freezeLoading) return;
-                        if (freezeBars) { setFreezeBars(null); return; }
+                        if (omFreezeBars) { setOmFreezeBars(null); return; }
                         setFreezeLoading(true); setChartError(null);
                         try {
                           const tok = await resolveOmToken();
                           if (!tok) { setChartError("ERA5 token unavailable"); return; }
                           const r = await getFreezingData(tok);
-                          setFreezeBars(r.bars);
+                          setOmFreezeBars(r.bars);
                         } catch (e) { setChartError("Freezing: " + (e instanceof Error ? e.message : String(e))); }
                         finally { setFreezeLoading(false); }
                       }} className="text-xs px-2 py-0.5 rounded border border-[#2e3148] text-[#8b90a8] hover:border-[#4f8ef7] transition-colors">
-                        {freezeLoading ? "…" : freezeBars ? "↺ reset" : "▶ run chart"}
+                        {freezeLoading ? "…" : omFreezeBars ? "↺ reset" : "▶ run chart"}
                       </button>
                     </div>
-                    {freezeBars && freezeBars.length > 0 && (
+                    {omFreezeBars && omFreezeBars.length > 0 && (
                       <ResponsiveContainer width="100%" height={180}>
-                        <BarChart data={freezeBars} margin={{ top: 4, right: 8, bottom: 18, left: 20 }}>
+                        <BarChart data={omFreezeBars} margin={{ top: 4, right: 8, bottom: 18, left: 20 }}>
                           <CartesianGrid strokeDasharray="3 3" stroke="#2e3148" />
                           <XAxis dataKey="week" label={{ value: "Fiscal week", position: "insideBottom", offset: -8, fontSize: 10, fill: "#8b90a8" }} tick={{ fontSize: 9, fill: "#8b90a8" }} />
                           <YAxis tick={{ fontSize: 9, fill: "#8b90a8" }} />
@@ -392,24 +399,24 @@ export default function StationStage() {
                       <span className="text-xs font-semibold text-gray-400">Min temperature heatmap</span>
                       <button onClick={async () => {
                         if (heatLoading) return;
-                        if (heatCells) { setHeatCells(null); return; }
+                        if (omHeatCells) { setOmHeatCells(null); return; }
                         setHeatLoading(true); setChartError(null);
                         try {
                           const tok = await resolveOmToken();
                           if (!tok) { setChartError("ERA5 token unavailable"); return; }
                           const r = await getHeatmapData(tok, units);
-                          setHeatCells(r.cells);
+                          setOmHeatCells(r.cells);
                         } catch (e) { setChartError("Heatmap: " + (e instanceof Error ? e.message : String(e))); }
                         finally { setHeatLoading(false); }
                       }} className="text-xs px-2 py-0.5 rounded border border-[#2e3148] text-[#8b90a8] hover:border-[#4f8ef7] transition-colors">
-                        {heatLoading ? "…" : heatCells ? "↺ reset" : "▶ run chart"}
+                        {heatLoading ? "…" : omHeatCells ? "↺ reset" : "▶ run chart"}
                       </button>
                     </div>
-                    {heatCells && heatCells.length > 0 && (() => {
-                      const years  = [...new Set(heatCells.map((c) => c.year))].sort();
+                    {omHeatCells && omHeatCells.length > 0 && (() => {
+                      const years  = [...new Set(omHeatCells.map((c) => c.year))].sort();
                       const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
                       const lookup: Record<string, number> = {};
-                      heatCells.forEach((c) => { lookup[`${c.month}-${c.year}`] = c.value; });
+                      omHeatCells.forEach((c) => { lookup[`${c.month}-${c.year}`] = c.value; });
                       const minV = Math.min(...heatCells.map((c) => c.value));
                       const maxV = Math.max(...heatCells.map((c) => c.value));
                       const colour = (v: number) => { const t = (v - minV) / (maxV - minV || 1); const r = Math.round(220 - t * 170); const g = Math.round(50 + t * 170); return `rgb(${r},${g},50)`; };
