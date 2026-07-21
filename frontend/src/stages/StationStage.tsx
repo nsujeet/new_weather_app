@@ -3,11 +3,11 @@
  */
 import { useEffect, useState, Suspense, lazy } from "react";
 import { useStore } from "../store";
-import { getStations, getAshraConditions, getPsychroChart, getScatterData, getHeatmapData, getFreezingData, getOpenMeteo, getBulkAvailability } from "../api";
+import { getStations, getAshraConditions, getPsychroChart, getDensityData, getHeatmapData, getFreezingData, getOpenMeteo, getBulkAvailability } from "../api";
 import type { AshraConditionResult, OmStat } from "../api";
 import Card from "../components/Card";
 import {
-  ScatterChart, Scatter, XAxis, YAxis, Tooltip as RCTooltip,
+  XAxis, YAxis, Tooltip as RCTooltip,
   CartesianGrid, ResponsiveContainer, BarChart, Bar,
 } from "recharts";
 
@@ -80,7 +80,8 @@ export default function StationStage() {
       return null;
     }
   };
-  const [scatterPoints,  setScatterPoints]  = useState<{x: number; y: number}[] | null>(null);
+  type DensityResult = { cells: {x:number;y:number;v:number}[]; x_width:number; y_height:number; max_v:number };
+  const [scatterDensity, setScatterDensity] = useState<DensityResult | null>(null);
   const [scatterLoading, setScatterLoading] = useState(false);
   const [psychroB64,     setPsychroB64]     = useState<string | null>(null);
   const [psychroLoading, setPsychroLoading] = useState(false);
@@ -263,36 +264,72 @@ export default function StationStage() {
                     <p className="text-xs text-red-400 mb-2 px-1">{chartError}</p>
                   )}
 
-                  {/* Scatter chart */}
+                  {/* Weather density chart (Tdb vs Twb) */}
                   <div className="mb-3">
                     <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs font-semibold text-gray-400">Weather scatter — Tdb vs Twb</span>
+                      <span className="text-xs font-semibold text-gray-400">Weather density — Tdb vs Twb (15-yr hourly)</span>
                       <button onClick={async () => {
                         if (scatterLoading) return;
-                        if (scatterPoints) { setScatterPoints(null); return; }
+                        if (scatterDensity) { setScatterDensity(null); return; }
                         setScatterLoading(true); setChartError(null);
                         try {
                           const tok = await resolveOmToken();
                           if (!tok) { setChartError("ERA5 token unavailable"); return; }
-                          const d = await getScatterData(tok, units);
-                          setScatterPoints(d.points);
-                        } catch (e) { setChartError("Scatter: " + (e instanceof Error ? e.message : String(e))); }
+                          const d = await getDensityData(tok, units, 60);
+                          setScatterDensity(d);
+                        } catch (e) { setChartError("Density: " + (e instanceof Error ? e.message : String(e))); }
                         finally { setScatterLoading(false); }
                       }} className="text-xs px-2 py-0.5 rounded border border-[#2e3148] text-[#8b90a8] hover:border-[#4f8ef7] transition-colors">
-                        {scatterLoading ? "…" : scatterPoints ? "↺ reset" : "▶ run chart"}
+                        {scatterLoading ? "…" : scatterDensity ? "↺ reset" : "▶ run chart"}
                       </button>
                     </div>
-                    {scatterPoints && (
-                      <ResponsiveContainer width="100%" height={200}>
-                        <ScatterChart margin={{ top: 4, right: 4, bottom: 4, left: 4 }}>
-                          <CartesianGrid stroke="#2e3148" strokeDasharray="3 3" />
-                          <XAxis dataKey="x" name={`Tdb (${sfx})`} type="number" domain={["auto","auto"]} tick={{ fontSize: 10, fill: "#8b90a8" }} label={{ value: `Tdb (${sfx})`, position: "insideBottom", offset: -2, fontSize: 10, fill: "#8b90a8" }} />
-                          <YAxis dataKey="y" name={`Twb (${sfx})`} type="number" domain={["auto","auto"]} tick={{ fontSize: 10, fill: "#8b90a8" }} />
-                          <RCTooltip cursor={{ strokeDasharray: "3 3" }} contentStyle={{ background: "#1a1d27", border: "1px solid #2e3148", fontSize: 11 }} formatter={(v: number) => v.toFixed(1)} />
-                          <Scatter data={scatterPoints} fill="#4f8ef7" opacity={0.85} r={1} />
-                        </ScatterChart>
-                      </ResponsiveContainer>
-                    )}
+                    {scatterDensity && (() => {
+                      const { cells, x_width, y_height, max_v } = scatterDensity;
+                      if (!cells.length) return <p className="text-xs text-gray-500">No data</p>;
+                      const xs = cells.map(c => c.x), ys = cells.map(c => c.y);
+                      const minX = Math.min(...xs) - x_width / 2;
+                      const maxX = Math.max(...xs) + x_width / 2;
+                      const minY = Math.min(...ys) - y_height / 2;
+                      const maxY = Math.max(...ys) + y_height / 2;
+                      const rX = maxX - minX, rY = maxY - minY;
+                      const PAD_L = 32, PAD_B = 20, PAD_R = 6, PAD_T = 4;
+                      const VW = 360, VH = 210;
+                      const cW = VW - PAD_L - PAD_R, cH = VH - PAD_T - PAD_B;
+                      const px = (x: number) => PAD_L + ((x - minX) / rX) * cW;
+                      const py = (y: number) => PAD_T + ((maxY - y) / rY) * cH;
+                      const cellPxW = (x_width / rX) * cW + 0.5;
+                      const cellPxH = (y_height / rY) * cH + 0.5;
+                      const col = (v: number) => {
+                        const t = Math.pow(v / max_v, 0.35);
+                        const r = Math.round(t > 0.5 ? 255 : t * 2 * 255);
+                        const g = Math.round(t < 0.5 ? t * 2 * 180 : 180 - (t - 0.5) * 2 * 80);
+                        const b = Math.round(t > 0.5 ? 0 : (1 - t * 2) * 220);
+                        return `rgb(${r},${g},${b})`;
+                      };
+                      const xTicks = 5, yTicks = 4;
+                      return (
+                        <svg viewBox={`0 0 ${VW} ${VH}`} width="100%" style={{ display: "block" }}>
+                          {cells.map((c, i) => (
+                            <rect key={i} x={px(c.x - x_width/2)} y={py(c.y + y_height/2)} width={cellPxW} height={cellPxH} fill={col(c.v)} opacity={0.92} />
+                          ))}
+                          {/* axes */}
+                          <line x1={PAD_L} y1={PAD_T} x2={PAD_L} y2={PAD_T + cH} stroke="#4e5270" />
+                          <line x1={PAD_L} y1={PAD_T + cH} x2={PAD_L + cW} y2={PAD_T + cH} stroke="#4e5270" />
+                          {Array.from({length: xTicks}, (_, i) => {
+                            const v = minX + (i / (xTicks - 1)) * rX;
+                            const x = px(v);
+                            return <g key={i}><line x1={x} y1={PAD_T+cH} x2={x} y2={PAD_T+cH+3} stroke="#4e5270" /><text x={x} y={VH-2} textAnchor="middle" fontSize={8} fill="#6b7280">{v.toFixed(0)}</text></g>;
+                          })}
+                          {Array.from({length: yTicks}, (_, i) => {
+                            const v = minY + (i / (yTicks - 1)) * rY;
+                            const y = py(v);
+                            return <g key={i}><line x1={PAD_L-3} y1={y} x2={PAD_L} y2={y} stroke="#4e5270" /><text x={PAD_L-5} y={y+3} textAnchor="end" fontSize={8} fill="#6b7280">{v.toFixed(0)}</text></g>;
+                          })}
+                          <text x={PAD_L + cW/2} y={VH} textAnchor="middle" fontSize={9} fill="#8b90a8">Tdb ({sfx})</text>
+                          <text x={8} y={PAD_T + cH/2} textAnchor="middle" fontSize={9} fill="#8b90a8" transform={`rotate(-90,8,${PAD_T+cH/2})`}>Twb ({sfx})</text>
+                        </svg>
+                      );
+                    })()}
                   </div>
 
                   {/* Psychrometric chart */}
