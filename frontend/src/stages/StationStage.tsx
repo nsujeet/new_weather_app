@@ -61,11 +61,23 @@ export default function StationStage() {
   // ERA5 quick-estimate section
   const [era5Open,        setEra5Open]        = useState(true);
   const [chartError,      setChartError]      = useState<string | null>(null);
+  // Loading flags — transient, only while fetching
   const [scatterLoading,  setScatterLoading]  = useState(false);
   const [psychroLoading,  setPsychroLoading]  = useState(false);
   const [heatLoading,     setHeatLoading]     = useState(false);
   const [freezeLoading,   setFreezeLoading]   = useState(false);
   const [monthlyLoading,  setMonthlyLoading]  = useState(false);
+  // Visibility flags — independent of cache; auto-true when data arrives
+  const [showDensity,  setShowDensity]  = useState(false);
+  const [showPsychro,  setShowPsychro]  = useState(false);
+  const [showFreeze,   setShowFreeze]   = useState(false);
+  const [showHeat,     setShowHeat]     = useState(false);
+  const [showMonthly,  setShowMonthly]  = useState(false);
+  useEffect(() => { if (omDensity)     setShowDensity(true);  }, [omDensity]);
+  useEffect(() => { if (omPsychroB64)  setShowPsychro(true);  }, [omPsychroB64]);
+  useEffect(() => { if (omFreezeBars)  setShowFreeze(true);   }, [omFreezeBars]);
+  useEffect(() => { if (omHeatCells)   setShowHeat(true);     }, [omHeatCells]);
+  useEffect(() => { if (omMonthlyData) setShowMonthly(true);  }, [omMonthlyData]);
 
   // Resolve a valid om_token — refetches ERA5 if server was restarted and token expired
   const resolveOmToken = async (): Promise<string | null> => {
@@ -278,22 +290,19 @@ export default function StationStage() {
                   <div className="mb-3">
                     <div className="flex items-center justify-between mb-1">
                       <span className="text-xs font-semibold text-gray-400">Weather density — Tdb vs Twb (15-yr hourly)</span>
-                      <button onClick={async () => {
+                      <button onClick={() => {
                         if (scatterLoading) return;
-                        if (omDensity) { setOmDensity(null); return; }
+                        if (omDensity) { setShowDensity(v => !v); return; }
                         setScatterLoading(true); setChartError(null);
-                        try {
-                          const tok = await resolveOmToken();
-                          if (!tok) { setChartError("ERA5 token unavailable"); return; }
-                          const d = await getDensityData(tok, units, 90);
-                          setOmDensity(d);
-                        } catch (e) { setChartError("Density: " + (e instanceof Error ? e.message : String(e))); }
-                        finally { setScatterLoading(false); }
+                        resolveOmToken().then(tok => {
+                          if (!tok) { setChartError("ERA5 token unavailable"); setScatterLoading(false); return; }
+                          getDensityData(tok, units, 90).then(setOmDensity).catch(()=>{}).finally(()=>setScatterLoading(false));
+                        });
                       }} className="text-xs px-2 py-0.5 rounded border border-[#2e3148] text-[#8b90a8] hover:border-[#4f8ef7] transition-colors">
-                        {scatterLoading ? "…" : omDensity ? "↺ reset" : "▶ run chart"}
+                        {scatterLoading ? "…" : !omDensity ? "▶ load" : showDensity ? "▲ hide" : "▼ show"}
                       </button>
                     </div>
-                    {omDensity && (() => {
+                    {omDensity && showDensity && (() => {
                       const { cells, x_width, y_height, max_v } = omDensity;
                       if (!cells.length) return <p className="text-xs text-gray-500">No data</p>;
                       const xs = cells.map(c => c.x), ys = cells.map(c => c.y);
@@ -346,44 +355,38 @@ export default function StationStage() {
                   <div className="mb-3">
                     <div className="flex items-center justify-between mb-1">
                       <span className="text-xs font-semibold text-gray-400">Psychrometric chart</span>
-                      <button onClick={async () => {
+                      <button onClick={() => {
                         if (psychroLoading) return;
-                        if (omPsychroB64) { setOmPsychroB64(null); return; }
+                        if (omPsychroB64) { setShowPsychro(v => !v); return; }
                         setPsychroLoading(true); setChartError(null);
-                        try {
-                          const tok = await resolveOmToken();
-                          if (!tok) { setChartError("ERA5 token unavailable"); return; }
-                          const d = await getPsychroChart(tok, units);
-                          setOmPsychroB64(d.image_b64);
-                        } catch (e) { setChartError("Psychro: " + (e instanceof Error ? e.message : String(e))); }
-                        finally { setPsychroLoading(false); }
+                        resolveOmToken().then(tok => {
+                          if (!tok) { setChartError("ERA5 token unavailable"); setPsychroLoading(false); return; }
+                          getPsychroChart(tok, units).then(d => setOmPsychroB64(d.image_b64)).catch(()=>{}).finally(()=>setPsychroLoading(false));
+                        });
                       }} className="text-xs px-2 py-0.5 rounded border border-[#2e3148] text-[#8b90a8] hover:border-[#4f8ef7] transition-colors">
-                        {psychroLoading ? "…" : omPsychroB64 ? "↺ reset" : "▶ run chart"}
+                        {psychroLoading ? "…" : !omPsychroB64 ? "▶ load" : showPsychro ? "▲ hide" : "▼ show"}
                       </button>
                     </div>
-                    {omPsychroB64 && <img src={`data:image/png;base64,${omPsychroB64}`} alt="Psychrometric chart" className="w-full rounded" />}
+                    {omPsychroB64 && showPsychro && <img src={`data:image/png;base64,${omPsychroB64}`} alt="Psychrometric chart" className="w-full rounded" />}
                   </div>
 
                   {/* Freezing hours */}
                   <div className="mb-3">
                     <div className="flex items-center justify-between mb-1">
                       <span className="text-xs font-semibold text-gray-400">Freezing hours per fiscal week</span>
-                      <button onClick={async () => {
+                      <button onClick={() => {
                         if (freezeLoading) return;
-                        if (omFreezeBars) { setOmFreezeBars(null); return; }
+                        if (omFreezeBars) { setShowFreeze(v => !v); return; }
                         setFreezeLoading(true); setChartError(null);
-                        try {
-                          const tok = await resolveOmToken();
-                          if (!tok) { setChartError("ERA5 token unavailable"); return; }
-                          const r = await getFreezingData(tok);
-                          setOmFreezeBars(r.bars);
-                        } catch (e) { setChartError("Freezing: " + (e instanceof Error ? e.message : String(e))); }
-                        finally { setFreezeLoading(false); }
+                        resolveOmToken().then(tok => {
+                          if (!tok) { setChartError("ERA5 token unavailable"); setFreezeLoading(false); return; }
+                          getFreezingData(tok).then(d => setOmFreezeBars(d.bars)).catch(()=>{}).finally(()=>setFreezeLoading(false));
+                        });
                       }} className="text-xs px-2 py-0.5 rounded border border-[#2e3148] text-[#8b90a8] hover:border-[#4f8ef7] transition-colors">
-                        {freezeLoading ? "…" : omFreezeBars ? "↺ reset" : "▶ run chart"}
+                        {freezeLoading ? "…" : !omFreezeBars ? "▶ load" : showFreeze ? "▲ hide" : "▼ show"}
                       </button>
                     </div>
-                    {omFreezeBars && omFreezeBars.length > 0 && (
+                    {omFreezeBars && showFreeze && omFreezeBars.length > 0 && (
                       <ResponsiveContainer width="100%" height={180}>
                         <BarChart data={omFreezeBars} margin={{ top: 4, right: 8, bottom: 18, left: 20 }}>
                           <CartesianGrid strokeDasharray="3 3" stroke="#2e3148" />
@@ -400,22 +403,19 @@ export default function StationStage() {
                   <div>
                     <div className="flex items-center justify-between mb-1">
                       <span className="text-xs font-semibold text-gray-400">Min temperature heatmap</span>
-                      <button onClick={async () => {
+                      <button onClick={() => {
                         if (heatLoading) return;
-                        if (omHeatCells) { setOmHeatCells(null); return; }
+                        if (omHeatCells) { setShowHeat(v => !v); return; }
                         setHeatLoading(true); setChartError(null);
-                        try {
-                          const tok = await resolveOmToken();
-                          if (!tok) { setChartError("ERA5 token unavailable"); return; }
-                          const r = await getHeatmapData(tok, units);
-                          setOmHeatCells(r.cells);
-                        } catch (e) { setChartError("Heatmap: " + (e instanceof Error ? e.message : String(e))); }
-                        finally { setHeatLoading(false); }
+                        resolveOmToken().then(tok => {
+                          if (!tok) { setChartError("ERA5 token unavailable"); setHeatLoading(false); return; }
+                          getHeatmapData(tok, units).then(d => setOmHeatCells(d.cells)).catch(()=>{}).finally(()=>setHeatLoading(false));
+                        });
                       }} className="text-xs px-2 py-0.5 rounded border border-[#2e3148] text-[#8b90a8] hover:border-[#4f8ef7] transition-colors">
-                        {heatLoading ? "…" : omHeatCells ? "↺ reset" : "▶ run chart"}
+                        {heatLoading ? "…" : !omHeatCells ? "▶ load" : showHeat ? "▲ hide" : "▼ show"}
                       </button>
                     </div>
-                    {omHeatCells && omHeatCells.length > 0 && (() => {
+                    {omHeatCells && showHeat && omHeatCells.length > 0 && (() => {
                       const years  = [...new Set(omHeatCells.map((c) => c.year))].sort();
                       const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
                       const lookup: Record<string, number> = {};
@@ -440,10 +440,12 @@ export default function StationStage() {
                       <span className="text-xs font-semibold text-gray-400">Monthly avg Tdb &amp; Twb — 15-yr mean</span>
                       {monthlyLoading && <span className="text-xs text-blue-400 animate-pulse">loading…</span>}
                       {!monthlyLoading && omMonthlyData && (
-                        <button onClick={() => setOmMonthlyData(null)} className="text-xs px-2 py-0.5 rounded border border-[#2e3148] text-[#8b90a8] hover:border-[#4f8ef7] transition-colors">↺ reset</button>
+                        <button onClick={() => setShowMonthly(v => !v)} className="text-xs px-2 py-0.5 rounded border border-[#2e3148] text-[#8b90a8] hover:border-[#4f8ef7] transition-colors">
+                          {showMonthly ? "▲ hide" : "▼ show"}
+                        </button>
                       )}
                     </div>
-                    {omMonthlyData && (
+                    {omMonthlyData && showMonthly && (
                       <>
                         <ResponsiveContainer width="100%" height={160}>
                           <LineChart data={omMonthlyData.months} margin={{ top: 4, right: 8, bottom: 4, left: 20 }}>
