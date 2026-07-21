@@ -417,8 +417,8 @@ export default function StationStage() {
                       const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
                       const lookup: Record<string, number> = {};
                       omHeatCells.forEach((c) => { lookup[`${c.month}-${c.year}`] = c.value; });
-                      const minV = Math.min(...heatCells.map((c) => c.value));
-                      const maxV = Math.max(...heatCells.map((c) => c.value));
+                      const minV = Math.min(...omHeatCells.map((c) => c.value));
+                      const maxV = Math.max(...omHeatCells.map((c) => c.value));
                       const colour = (v: number) => { const t = (v - minV) / (maxV - minV || 1); const r = Math.round(220 - t * 170); const g = Math.round(50 + t * 170); return `rgb(${r},${g},50)`; };
                       return (
                         <div className="overflow-x-auto">
