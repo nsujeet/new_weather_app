@@ -9,7 +9,7 @@ import Card from "../components/Card";
 import {
   XAxis, YAxis, Tooltip as RCTooltip, Legend,
   CartesianGrid, ResponsiveContainer, BarChart, Bar,
-  LineChart, Line,
+  ComposedChart, Line, Area,
 } from "recharts";
 
 const SiteMap = lazy(() => import("../components/SiteMap"));
@@ -447,16 +447,41 @@ export default function StationStage() {
                     </div>
                     {omMonthlyData && showMonthly && (
                       <>
-                        <ResponsiveContainer width="100%" height={160}>
-                          <LineChart data={omMonthlyData.months} margin={{ top: 4, right: 8, bottom: 4, left: 20 }}>
+                        <ResponsiveContainer width="100%" height={180}>
+                          <ComposedChart
+                            data={omMonthlyData.months.map(m => ({ ...m, tdb_band: +(m.tdb_p90 - m.tdb_p10).toFixed(1), twb_band: +(m.twb_p90 - m.twb_p10).toFixed(1) }))}
+                            margin={{ top: 4, right: 8, bottom: 4, left: 20 }}
+                          >
                             <CartesianGrid strokeDasharray="3 3" stroke="#2e3148" />
                             <XAxis dataKey="month" tick={{ fontSize: 9, fill: "#8b90a8" }} />
                             <YAxis tick={{ fontSize: 9, fill: "#8b90a8" }} width={28} />
-                            <RCTooltip contentStyle={{ background: "#1a1d27", border: "1px solid #2e3148", fontSize: 11 }} formatter={(v: number) => v.toFixed(1)} />
-                            <Legend iconSize={8} wrapperStyle={{ fontSize: 10, paddingTop: 4 }} />
+                            <RCTooltip
+                              contentStyle={{ background: "#1a1d27", border: "1px solid #2e3148", fontSize: 11, borderRadius: 6 }}
+                              content={({ active, payload, label }) => {
+                                if (!active || !payload?.length) return null;
+                                const d = payload[0]?.payload;
+                                return (
+                                  <div style={{ background: "#1a1d27", border: "1px solid #2e3148", padding: "6px 10px", borderRadius: 6, fontSize: 11 }}>
+                                    <p style={{ color: "#8b90a8", marginBottom: 4, fontWeight: 600 }}>{label}</p>
+                                    <p style={{ color: "#f97316" }}>Tdb: <b>{d.tdb_mean.toFixed(1)}</b> {sfx} &nbsp;<span style={{ color:"#6b7280" }}>({d.tdb_p10}–{d.tdb_p90})</span></p>
+                                    <p style={{ color: "#4f8ef7" }}>Twb: <b>{d.twb_mean.toFixed(1)}</b> {sfx} &nbsp;<span style={{ color:"#6b7280" }}>({d.twb_p10}–{d.twb_p90})</span></p>
+                                  </div>
+                                );
+                              }}
+                            />
+                            <Legend iconSize={8} wrapperStyle={{ fontSize: 10, paddingTop: 2 }}
+                              formatter={(v) => v === `Tdb (${sfx})` || v === `Twb (${sfx})` ? v : null}
+                            />
+                            {/* Tdb shaded band p10→p90 */}
+                            <Area type="monotone" dataKey="tdb_p10" stackId="tdb" stroke="none" fill="transparent" legendType="none" tooltipType="none" />
+                            <Area type="monotone" dataKey="tdb_band" stackId="tdb" stroke="none" fill="#f97316" fillOpacity={0.18} legendType="none" tooltipType="none" />
+                            {/* Twb shaded band p10→p90 */}
+                            <Area type="monotone" dataKey="twb_p10" stackId="twb" stroke="none" fill="transparent" legendType="none" tooltipType="none" />
+                            <Area type="monotone" dataKey="twb_band" stackId="twb" stroke="none" fill="#4f8ef7" fillOpacity={0.18} legendType="none" tooltipType="none" />
+                            {/* Mean lines on top */}
                             <Line type="monotone" dataKey="tdb_mean" name={`Tdb (${sfx})`} stroke="#f97316" dot={false} strokeWidth={2} />
                             <Line type="monotone" dataKey="twb_mean" name={`Twb (${sfx})`} stroke="#4f8ef7" dot={false} strokeWidth={2} />
-                          </LineChart>
+                          </ComposedChart>
                         </ResponsiveContainer>
                         <div className="overflow-x-auto mt-1">
                           <table className="w-full text-xs border-collapse" style={{ minWidth: 420 }}>
