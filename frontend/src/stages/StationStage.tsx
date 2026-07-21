@@ -3,12 +3,13 @@
  */
 import { useEffect, useState, Suspense, lazy } from "react";
 import { useStore } from "../store";
-import { getStations, getAshraConditions, getPsychroChart, getDensityData, getHeatmapData, getFreezingData, getOpenMeteo, getBulkAvailability } from "../api";
+import { getStations, getAshraConditions, getPsychroChart, getDensityData, getHeatmapData, getFreezingData, getMonthlyData, getOpenMeteo, getBulkAvailability } from "../api";
 import type { AshraConditionResult, OmStat } from "../api";
 import Card from "../components/Card";
 import {
-  XAxis, YAxis, Tooltip as RCTooltip,
+  XAxis, YAxis, Tooltip as RCTooltip, Legend,
   CartesianGrid, ResponsiveContainer, BarChart, Bar,
+  LineChart, Line,
 } from "recharts";
 
 const SiteMap = lazy(() => import("../components/SiteMap"));
@@ -44,11 +45,11 @@ export default function StationStage() {
     noaaStations, ashraStations, selectedStation, recommendedStationId, ashraConditions,
     ashraEdition: edition, ashraLevel: acfLevel,
     omResult, omLoading, omError,
-    omDensity, omPsychroB64, omFreezeBars, omHeatCells,
+    omDensity, omPsychroB64, omFreezeBars, omHeatCells, omMonthlyData,
     stationAvailMap, setStationAvailMap,
     setStations, selectStation, setAshraConditions, setAshraEdition: setEdition, setAshraLevel: setAcfLevel, advanceTo,
     setOmResult, setOmLoading, setOmError, setAvailableYears,
-    setOmDensity, setOmPsychroB64, setOmFreezeBars, setOmHeatCells,
+    setOmDensity, setOmPsychroB64, setOmFreezeBars, setOmHeatCells, setOmMonthlyData,
   } = useStore();
 
   const [loading,      setLoading]      = useState(false);
@@ -58,12 +59,13 @@ export default function StationStage() {
   const [availLoading, setAvailLoading] = useState(false);
 
   // ERA5 quick-estimate section
-  const [era5Open,       setEra5Open]       = useState(true);
-  const [chartError,     setChartError]     = useState<string | null>(null);
-  const [scatterLoading, setScatterLoading] = useState(false);
-  const [psychroLoading, setPsychroLoading] = useState(false);
-  const [heatLoading,    setHeatLoading]    = useState(false);
-  const [freezeLoading,  setFreezeLoading]  = useState(false);
+  const [era5Open,        setEra5Open]        = useState(true);
+  const [chartError,      setChartError]      = useState<string | null>(null);
+  const [scatterLoading,  setScatterLoading]  = useState(false);
+  const [psychroLoading,  setPsychroLoading]  = useState(false);
+  const [heatLoading,     setHeatLoading]     = useState(false);
+  const [freezeLoading,   setFreezeLoading]   = useState(false);
+  const [monthlyLoading,  setMonthlyLoading]  = useState(false);
 
   // Resolve a valid om_token — refetches ERA5 if server was restarted and token expired
   const resolveOmToken = async (): Promise<string | null> => {
@@ -87,14 +89,15 @@ export default function StationStage() {
     }
   };
 
-  // Auto-load density chart when ERA5 data first arrives
+  // Auto-load all ERA5 charts in parallel when ERA5 data first arrives
   useEffect(() => {
-    if (!omResult?.om_token || omDensity || scatterLoading) return;
-    setScatterLoading(true);
-    getDensityData(omResult.om_token, units, 60)
-      .then((d) => setOmDensity(d))
-      .catch(() => {})
-      .finally(() => setScatterLoading(false));
+    const tok = omResult?.om_token;
+    if (!tok) return;
+    if (!omDensity)     { setScatterLoading(true);  getDensityData(tok, units, 90).then(setOmDensity).catch(()=>{}).finally(()=>setScatterLoading(false)); }
+    if (!omMonthlyData) { setMonthlyLoading(true);  getMonthlyData(tok, units).then(setOmMonthlyData).catch(()=>{}).finally(()=>setMonthlyLoading(false)); }
+    if (!omPsychroB64)  { setPsychroLoading(true);  getPsychroChart(tok, units).then(d=>setOmPsychroB64(d.image_b64)).catch(()=>{}).finally(()=>setPsychroLoading(false)); }
+    if (!omFreezeBars)  { setFreezeLoading(true);   getFreezingData(tok).then(d=>setOmFreezeBars(d.bars)).catch(()=>{}).finally(()=>setFreezeLoading(false)); }
+    if (!omHeatCells)   { setHeatLoading(true);     getHeatmapData(tok, units).then(d=>setOmHeatCells(d.cells)).catch(()=>{}).finally(()=>setHeatLoading(false)); }
   }, [omResult]);
 
   const sfx    = units === "C" ? "°C" : "°F";
@@ -282,7 +285,7 @@ export default function StationStage() {
                         try {
                           const tok = await resolveOmToken();
                           if (!tok) { setChartError("ERA5 token unavailable"); return; }
-                          const d = await getDensityData(tok, units, 60);
+                          const d = await getDensityData(tok, units, 90);
                           setOmDensity(d);
                         } catch (e) { setChartError("Density: " + (e instanceof Error ? e.message : String(e))); }
                         finally { setScatterLoading(false); }
@@ -299,8 +302,8 @@ export default function StationStage() {
                       const minY = Math.min(...ys) - y_height / 2;
                       const maxY = Math.max(...ys) + y_height / 2;
                       const rX = maxX - minX, rY = maxY - minY;
-                      const PAD_L = 32, PAD_B = 20, PAD_R = 6, PAD_T = 4;
-                      const VW = 360, VH = 210;
+                      const PAD_L = 32, PAD_B = 36, PAD_R = 6, PAD_T = 4;
+                      const VW = 360, VH = 230;
                       const cW = VW - PAD_L - PAD_R, cH = VH - PAD_T - PAD_B;
                       const px = (x: number) => PAD_L + ((x - minX) / rX) * cW;
                       const py = (y: number) => PAD_T + ((maxY - y) / rY) * cH;
@@ -313,27 +316,27 @@ export default function StationStage() {
                         const b = Math.round(t > 0.5 ? 0 : (1 - t * 2) * 220);
                         return `rgb(${r},${g},${b})`;
                       };
-                      const xTicks = 5, yTicks = 4;
+                      const xTicks = 6, yTicks = 5;
+                      const axisY = PAD_T + cH;
                       return (
                         <svg viewBox={`0 0 ${VW} ${VH}`} width="100%" style={{ display: "block" }}>
                           {cells.map((c, i) => (
                             <rect key={i} x={px(c.x - x_width/2)} y={py(c.y + y_height/2)} width={cellPxW} height={cellPxH} fill={col(c.v)} opacity={0.92} />
                           ))}
-                          {/* axes */}
-                          <line x1={PAD_L} y1={PAD_T} x2={PAD_L} y2={PAD_T + cH} stroke="#4e5270" />
-                          <line x1={PAD_L} y1={PAD_T + cH} x2={PAD_L + cW} y2={PAD_T + cH} stroke="#4e5270" />
+                          <line x1={PAD_L} y1={PAD_T} x2={PAD_L} y2={axisY} stroke="#4e5270" />
+                          <line x1={PAD_L} y1={axisY} x2={PAD_L + cW} y2={axisY} stroke="#4e5270" />
                           {Array.from({length: xTicks}, (_, i) => {
                             const v = minX + (i / (xTicks - 1)) * rX;
                             const x = px(v);
-                            return <g key={i}><line x1={x} y1={PAD_T+cH} x2={x} y2={PAD_T+cH+3} stroke="#4e5270" /><text x={x} y={VH-2} textAnchor="middle" fontSize={8} fill="#6b7280">{v.toFixed(0)}</text></g>;
+                            return <g key={i}><line x1={x} y1={axisY} x2={x} y2={axisY+3} stroke="#4e5270" /><text x={x} y={axisY+13} textAnchor="middle" fontSize={8} fill="#6b7280">{v.toFixed(0)}</text></g>;
                           })}
                           {Array.from({length: yTicks}, (_, i) => {
                             const v = minY + (i / (yTicks - 1)) * rY;
                             const y = py(v);
                             return <g key={i}><line x1={PAD_L-3} y1={y} x2={PAD_L} y2={y} stroke="#4e5270" /><text x={PAD_L-5} y={y+3} textAnchor="end" fontSize={8} fill="#6b7280">{v.toFixed(0)}</text></g>;
                           })}
-                          <text x={PAD_L + cW/2} y={VH} textAnchor="middle" fontSize={9} fill="#8b90a8">Tdb ({sfx})</text>
-                          <text x={8} y={PAD_T + cH/2} textAnchor="middle" fontSize={9} fill="#8b90a8" transform={`rotate(-90,8,${PAD_T+cH/2})`}>Twb ({sfx})</text>
+                          <text x={PAD_L + cW/2} y={VH - 4} textAnchor="middle" fontSize={9} fill="#8b90a8">Tdb ({sfx})</text>
+                          <text x={9} y={PAD_T + cH/2} textAnchor="middle" fontSize={9} fill="#8b90a8" transform={`rotate(-90,9,${PAD_T+cH/2})`}>Twb ({sfx})</text>
                         </svg>
                       );
                     })()}
@@ -429,6 +432,52 @@ export default function StationStage() {
                         </div>
                       );
                     })()}
+                  </div>
+
+                  {/* Monthly climatology line chart */}
+                  <div className="mt-1">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs font-semibold text-gray-400">Monthly avg Tdb &amp; Twb — 15-yr mean</span>
+                      {monthlyLoading && <span className="text-xs text-blue-400 animate-pulse">loading…</span>}
+                      {!monthlyLoading && omMonthlyData && (
+                        <button onClick={() => setOmMonthlyData(null)} className="text-xs px-2 py-0.5 rounded border border-[#2e3148] text-[#8b90a8] hover:border-[#4f8ef7] transition-colors">↺ reset</button>
+                      )}
+                    </div>
+                    {omMonthlyData && (
+                      <>
+                        <ResponsiveContainer width="100%" height={160}>
+                          <LineChart data={omMonthlyData.months} margin={{ top: 4, right: 8, bottom: 4, left: 20 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#2e3148" />
+                            <XAxis dataKey="month" tick={{ fontSize: 9, fill: "#8b90a8" }} />
+                            <YAxis tick={{ fontSize: 9, fill: "#8b90a8" }} width={28} />
+                            <RCTooltip contentStyle={{ background: "#1a1d27", border: "1px solid #2e3148", fontSize: 11 }} formatter={(v: number) => v.toFixed(1)} />
+                            <Legend iconSize={8} wrapperStyle={{ fontSize: 10, paddingTop: 4 }} />
+                            <Line type="monotone" dataKey="tdb_mean" name={`Tdb (${sfx})`} stroke="#f97316" dot={false} strokeWidth={2} />
+                            <Line type="monotone" dataKey="twb_mean" name={`Twb (${sfx})`} stroke="#4f8ef7" dot={false} strokeWidth={2} />
+                          </LineChart>
+                        </ResponsiveContainer>
+                        <div className="overflow-x-auto mt-1">
+                          <table className="w-full text-xs border-collapse" style={{ minWidth: 420 }}>
+                            <thead>
+                              <tr>
+                                <td className="py-0.5 pr-2 text-gray-500 font-semibold whitespace-nowrap"></td>
+                                {omMonthlyData.months.map(m => <td key={m.month} className="text-center py-0.5 px-1 text-gray-500 font-semibold">{m.month}</td>)}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              <tr>
+                                <td className="py-0.5 pr-2 text-orange-400 font-medium whitespace-nowrap">Tdb ({sfx})</td>
+                                {omMonthlyData.months.map(m => <td key={m.month} className="text-center py-0.5 px-1 font-mono text-gray-300">{m.tdb_mean.toFixed(1)}</td>)}
+                              </tr>
+                              <tr className="bg-[#1a1d27]">
+                                <td className="py-0.5 pr-2 text-blue-400 font-medium whitespace-nowrap">Twb ({sfx})</td>
+                                {omMonthlyData.months.map(m => <td key={m.month} className="text-center py-0.5 px-1 font-mono text-gray-300">{m.twb_mean.toFixed(1)}</td>)}
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+                      </>
+                    )}
                   </div>
                 </>
               );

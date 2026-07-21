@@ -2,7 +2,7 @@
  * store.ts — global app state via Zustand
  */
 import { create } from "zustand";
-import type { SiteInfo, NoaaStation, AshraStation, ProcessResult, OmResult, FilterScore, AshraConditionResult } from "./api";
+import type { SiteInfo, NoaaStation, AshraStation, ProcessResult, OmResult, FilterScore, AshraConditionResult, MonthlyPoint } from "./api";
 
 export type Stage = "site" | "station" | "years" | "fetch" | "filter" | "results";
 
@@ -59,10 +59,12 @@ export interface AppState {
   omPsychroB64: string | null;
   omFreezeBars: {week:number;hours:number}[] | null;
   omHeatCells: {month:string;year:number;value:number}[] | null;
+  omMonthlyData: { months: MonthlyPoint[]; units: string } | null;
   setOmDensity: (d: AppState["omDensity"]) => void;
   setOmPsychroB64: (b: string | null) => void;
   setOmFreezeBars: (b: AppState["omFreezeBars"]) => void;
   setOmHeatCells: (c: AppState["omHeatCells"]) => void;
+  setOmMonthlyData: (m: AppState["omMonthlyData"]) => void;
 
   // ASHRAE edition + level (persisted so navigation doesn't reset them)
   ashraEdition: string;
@@ -114,6 +116,7 @@ const initial = {
   omDensity: null,
   omPsychroB64: null,
   omFreezeBars: null,
+  omMonthlyData: null,
   omHeatCells: null,
   noaaStations: [],
   ashraStations: [],
@@ -152,7 +155,7 @@ export const useStore = create<AppState>((set, get) => ({
     recommendedStationId: null, ashraConditions: [],
     stationAvailMap: {}, availableYears: [],
     omResult: null,  // ERA5 re-fetched in SiteStage.handleConfirm after this
-    omDensity: null, omPsychroB64: null, omFreezeBars: null, omHeatCells: null,
+    omDensity: null, omPsychroB64: null, omFreezeBars: null, omHeatCells: null, omMonthlyData: null,
   }),
 
   setStations: (noaa, ashra, recommended) =>
@@ -194,6 +197,7 @@ export const useStore = create<AppState>((set, get) => ({
   setOmPsychroB64: (b) => set({ omPsychroB64: b }),
   setOmFreezeBars: (b) => set({ omFreezeBars: b }),
   setOmHeatCells: (c) => set({ omHeatCells: c }),
+  setOmMonthlyData: (m) => set({ omMonthlyData: m }),
 
   setAshraEdition: (e) => set({ ashraEdition: e }),
   setAshraLevel: (l) => set({ ashraLevel: l }),

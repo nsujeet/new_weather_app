@@ -778,6 +778,46 @@ def density_data(token: str, units: str = "F", bins: int = 60):
     }
 
 
+@router.get("/chart/monthly-data")
+def monthly_data(token: str, units: str = "F"):
+    """Return monthly mean + p10/p90 for Tdb and Twb across all years."""
+    stored = _result_store.get(token)
+    if not stored or "hourly_df_json" not in stored:
+        return JSONResponse({"error": "Token not found"}, status_code=404)
+
+    df = pd.read_json(io.StringIO(stored["hourly_df_json"]), orient="records")
+
+    # Locate the datetime column (first column after reset_index)
+    dt_col = next((c for c in df.columns if c.lower() in ("index", "time", "datetime", "date", "timestamp")), df.columns[0])
+    df["_dt"] = pd.to_datetime(df[dt_col], errors="coerce", utc=True).dt.tz_convert(None)
+    df["month"] = df["_dt"].dt.month
+
+    df["Tdb"] = pd.to_numeric(df.get("Tdb", pd.Series(dtype=float)), errors="coerce")
+    df["Twb"] = pd.to_numeric(df.get("Twb", pd.Series(dtype=float)), errors="coerce")
+
+    if units.upper() == "C":
+        df["Tdb"] = (df["Tdb"] - 32) * 5 / 9
+        df["Twb"] = (df["Twb"] - 32) * 5 / 9
+
+    month_names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+    records = []
+    for m in range(1, 13):
+        sub = df[df["month"] == m].dropna(subset=["Tdb", "Twb"])
+        if sub.empty:
+            continue
+        records.append({
+            "month":    month_names[m - 1],
+            "tdb_mean": round(float(sub["Tdb"].mean()), 1),
+            "twb_mean": round(float(sub["Twb"].mean()), 1),
+            "tdb_p10":  round(float(sub["Tdb"].quantile(0.10)), 1),
+            "tdb_p90":  round(float(sub["Tdb"].quantile(0.90)), 1),
+            "twb_p10":  round(float(sub["Twb"].quantile(0.10)), 1),
+            "twb_p90":  round(float(sub["Twb"].quantile(0.90)), 1),
+        })
+
+    return {"months": records, "units": units.upper()}
+
+
 @router.get("/chart/heatmap-data")
 def heatmap_data(token: str, units: str = "F"):
     """Return min-temp-per-month pivot for heatmap (180 cells max)."""

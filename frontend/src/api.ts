@@ -196,6 +196,10 @@ export const getDensityData = (token: string, units = "F", bins = 60) =>
 export const getHeatmapData = (token: string, units = "F") =>
   http.get<{ cells: { month: string; year: number; value: number }[]; units: string }>("/chart/heatmap-data", { params: { token, units } }).then((r) => r.data);
 
+export type MonthlyPoint = { month: string; tdb_mean: number; twb_mean: number; tdb_p10: number; tdb_p90: number; twb_p10: number; twb_p90: number };
+export const getMonthlyData = (token: string, units = "F") =>
+  http.get<{ months: MonthlyPoint[]; units: string }>("/chart/monthly-data", { params: { token, units } }).then((r) => r.data);
+
 export const getFreezingData = (token: string) =>
   http.get<{ bars: { week: number; hours: number }[]; threshold_f: number }>("/chart/freezing-data", { params: { token } }).then((r) => r.data);
 
