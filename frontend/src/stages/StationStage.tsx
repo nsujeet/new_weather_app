@@ -62,11 +62,7 @@ export default function StationStage() {
   // Resolve a valid om_token — refetches ERA5 if server was restarted and token expired
   const resolveOmToken = async (): Promise<string | null> => {
     if (omResult?.om_token) {
-      // Quick probe: try to fetch 1-row scatter; if 404 fall through to refetch
-      try {
-        await getScatterData(omResult.om_token, units);
-        return omResult.om_token;
-      } catch { /* token expired — fall through */ }
+      return omResult.om_token;
     }
     if (lat == null || lon == null) return null;
     setChartError(null);
@@ -272,6 +268,7 @@ export default function StationStage() {
                     <div className="flex items-center justify-between mb-1">
                       <span className="text-xs font-semibold text-gray-400">Weather scatter — Tdb vs Twb</span>
                       <button onClick={async () => {
+                        if (scatterLoading) return;
                         if (scatterPoints) { setScatterPoints(null); return; }
                         setScatterLoading(true); setChartError(null);
                         try {
@@ -303,6 +300,7 @@ export default function StationStage() {
                     <div className="flex items-center justify-between mb-1">
                       <span className="text-xs font-semibold text-gray-400">Psychrometric chart</span>
                       <button onClick={async () => {
+                        if (psychroLoading) return;
                         if (psychroB64) { setPsychroB64(null); return; }
                         setPsychroLoading(true); setChartError(null);
                         try {
@@ -324,6 +322,7 @@ export default function StationStage() {
                     <div className="flex items-center justify-between mb-1">
                       <span className="text-xs font-semibold text-gray-400">Freezing hours per fiscal week</span>
                       <button onClick={async () => {
+                        if (freezeLoading) return;
                         if (freezeBars) { setFreezeBars(null); return; }
                         setFreezeLoading(true); setChartError(null);
                         try {
@@ -355,6 +354,7 @@ export default function StationStage() {
                     <div className="flex items-center justify-between mb-1">
                       <span className="text-xs font-semibold text-gray-400">Min temperature heatmap</span>
                       <button onClick={async () => {
+                        if (heatLoading) return;
                         if (heatCells) { setHeatCells(null); return; }
                         setHeatLoading(true); setChartError(null);
                         try {
