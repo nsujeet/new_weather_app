@@ -3,7 +3,7 @@
  */
 import { useEffect, useState, Suspense, lazy } from "react";
 import { useStore } from "../store";
-import { getStations, getAshraConditions, getPsychroChart, getDensityData, getHeatmapData, getFreezingData, getMonthlyData, getOpenMeteo, getBulkAvailability } from "../api";
+import { getStations, getAshraConditions, getPsychroChart, getDensityData, getHeatmapData, getFreezingData, getMonthlyData, getOpenMeteo, getBulkAvailability, downloadOmCsv } from "../api";
 import type { AshraConditionResult, OmStat } from "../api";
 import Card from "../components/Card";
 import {
@@ -115,6 +115,20 @@ export default function StationStage() {
   const sfx    = units === "C" ? "°C" : "°F";
   const si_ip  = units === "C" ? "SI" : "IP";
 
+  const downloadMonthlyCsv = () => {
+    if (!omMonthlyData) return;
+    const u = units === "C" ? "C" : "F";
+    const header = `Month,Tdb_mean_${u},Twb_mean_${u},Tdb_p10_${u},Tdb_p90_${u},Twb_p10_${u},Twb_p90_${u}`;
+    const rows = omMonthlyData.months.map(m =>
+      `${m.month},${m.tdb_mean},${m.twb_mean},${m.tdb_p10},${m.tdb_p90},${m.twb_p10},${m.twb_p90}`
+    );
+    const blob = new Blob([[header, ...rows].join("\n")], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "monthly_climatology.csv"; a.click();
+    URL.revokeObjectURL(url);
+  };
+
   // Load NOAA + ASHRAE stations on mount
   useEffect(() => {
     if (noaaStations.length > 0) return;
@@ -185,6 +199,17 @@ export default function StationStage() {
             )}
             {omError && !omResult && (
               <p className="text-xs text-orange-400">ERA5 unavailable: {omError}</p>
+            )}
+
+            {omResult?.om_token && (
+              <div className="flex justify-end mb-2">
+                <button
+                  onClick={() => downloadOmCsv(omResult.om_token!)}
+                  className="text-xs px-2 py-0.5 rounded border border-[#2e3148] text-[#8b90a8] hover:border-[#4f8ef7] transition-colors"
+                >
+                  ⬇ hourly CSV
+                </button>
+              </div>
             )}
 
             {omResult && (() => {
@@ -438,12 +463,19 @@ export default function StationStage() {
                   <div className="mt-1">
                     <div className="flex items-center justify-between mb-1">
                       <span className="text-xs font-semibold text-gray-400">Monthly avg Tdb &amp; Twb — 15-yr mean</span>
-                      {monthlyLoading && <span className="text-xs text-blue-400 animate-pulse">loading…</span>}
-                      {!monthlyLoading && omMonthlyData && (
-                        <button onClick={() => setShowMonthly(v => !v)} className="text-xs px-2 py-0.5 rounded border border-[#2e3148] text-[#8b90a8] hover:border-[#4f8ef7] transition-colors">
-                          {showMonthly ? "▲ hide" : "▼ show"}
-                        </button>
-                      )}
+                      <div className="flex items-center gap-1">
+                        {monthlyLoading && <span className="text-xs text-blue-400 animate-pulse">loading…</span>}
+                        {omMonthlyData && (
+                          <button onClick={downloadMonthlyCsv} className="text-xs px-2 py-0.5 rounded border border-[#2e3148] text-[#8b90a8] hover:border-[#4f8ef7] transition-colors">
+                            ⬇ CSV
+                          </button>
+                        )}
+                        {!monthlyLoading && omMonthlyData && (
+                          <button onClick={() => setShowMonthly(v => !v)} className="text-xs px-2 py-0.5 rounded border border-[#2e3148] text-[#8b90a8] hover:border-[#4f8ef7] transition-colors">
+                            {showMonthly ? "▲ hide" : "▼ show"}
+                          </button>
+                        )}
+                      </div>
                     </div>
                     {omMonthlyData && showMonthly && (
                       <>

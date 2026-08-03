@@ -989,6 +989,28 @@ def download_csv(token: str):
 
 
 # ─────────────────────────────────────────────────────────────────
+#  /download-om-csv  — raw ERA5 hourly data as CSV
+# ─────────────────────────────────────────────────────────────────
+
+@router.get("/download-om-csv")
+def download_om_csv(token: str):
+    stored = _result_store.get(token)
+    if not stored or "hourly_df_json" not in stored:
+        return JSONResponse({"error": "Token not found"}, status_code=404)
+
+    df = pd.read_json(io.StringIO(stored["hourly_df_json"]), orient="records")
+    buf = io.StringIO()
+    df.to_csv(buf, index=False)
+    buf.seek(0)
+
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{token}_hourly.csv"'},
+    )
+
+
+# ─────────────────────────────────────────────────────────────────
 #  /download-results  — Stats + yearly summary as CSV
 # ─────────────────────────────────────────────────────────────────
 

@@ -203,6 +203,14 @@ export const getMonthlyData = (token: string, units = "F") =>
 export const getFreezingData = (token: string) =>
   http.get<{ bars: { week: number; hours: number }[]; threshold_f: number }>("/chart/freezing-data", { params: { token } }).then((r) => r.data);
 
+export const downloadOmCsv = (token: string) => {
+  const url = `${BASE}/download-om-csv?token=${encodeURIComponent(token)}`;
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${token}_hourly.csv`;
+  a.click();
+};
+
 export const downloadCsv = (token: string, stationId: string) => {
   const url = `${BASE}/download-csv?token=${encodeURIComponent(token)}`;
   const a = document.createElement("a");
