@@ -9,8 +9,8 @@ from typing import Optional
 _cache: dict = {"users": None, "ts": 0.0}
 _TTL = 300
 
-_SHEET_ID = os.getenv("GUEST_CONFIG_SHEET_ID", "")
-_RANGE    = "Sheet1!A:B"
+_SHEET_ID = os.getenv("USERS_SHEET_ID", "")
+_RANGE    = "Guests!A:B"
 
 
 def get_password_users() -> dict[str, str]:
