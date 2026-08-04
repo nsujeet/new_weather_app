@@ -14,6 +14,7 @@ import os
 
 from fastapi import APIRouter, HTTPException, Request, status
 from fastapi.responses import JSONResponse, RedirectResponse
+from pydantic import BaseModel
 
 from auth import (
     SESSION_COOKIE,
@@ -118,6 +119,25 @@ def me(request: Request):
     if not email:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
     return {"email": email}
+
+
+class _PasswordLoginBody(BaseModel):
+    email: str
+    password: str
+
+
+@router.post("/password-login")
+def password_login(body: _PasswordLoginBody):
+    from utils.guest_config import get_password_users
+    users = get_password_users()
+    email = body.email.strip().lower()
+    stored = users.get(email)
+    if not stored or stored != body.password:
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    session_token = create_session(email)
+    response = JSONResponse({"ok": True})
+    response.set_cookie(SESSION_COOKIE, session_token, httponly=True, samesite="lax", max_age=30 * 86400, path="/")
+    return response
 
 
 @router.get("/logout")

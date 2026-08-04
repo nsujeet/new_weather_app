@@ -3,6 +3,7 @@ import "./App.css";
 import { useStore } from "./store";
 import type { AppState } from "./store";
 import ChatPanel from "./components/ChatPanel";
+import LoginScreen from "./components/LoginScreen";
 import SiteStage from "./stages/SiteStage";
 import StationStage from "./stages/StationStage";
 import YearsStage from "./stages/YearsStage";
@@ -240,21 +241,18 @@ export default function App() {
   } = appStore;
 
   const [userEmail, setUserEmail] = useState<string>("");
+  const [showLogin, setShowLogin] = useState(false);
 
   useEffect(() => {
     fetch(`${BASE}/auth/me`, { credentials: "include" })
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
-        if (data?.email) {
-          setUserEmail(data.email);
-        } else if (import.meta.env.PROD) {
-          window.location.href = `${BASE}/auth/login`;
-        } else {
-          setUserEmail("dev@local");
-        }
+        if (data?.email) setUserEmail(data.email);
+        else if (import.meta.env.PROD) setShowLogin(true);
+        else setUserEmail("dev@local");
       })
       .catch(() => {
-        if (import.meta.env.PROD) window.location.href = `${BASE}/auth/login`;
+        if (import.meta.env.PROD) setShowLogin(true);
         else setUserEmail("dev@local");
       });
   }, []);
@@ -279,6 +277,10 @@ export default function App() {
     fetch:   <FetchDoneCard />,
     filter:  <FilterDoneCard />,
   };
+
+  if (import.meta.env.PROD && showLogin && !userEmail) {
+    return <LoginScreen apiBase={BASE} onLogin={(email) => { setUserEmail(email); setShowLogin(false); }} />;
+  }
 
   return (
     <div className="wa-app">
