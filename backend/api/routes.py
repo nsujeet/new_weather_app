@@ -22,6 +22,18 @@ from typing import AsyncGenerator
 import numpy as np
 import pandas as pd
 
+# LRU cache for NOAA year DataFrames — capped to avoid OOM
+# 20 slots ≈ 2 stations × 10 years, ~80MB max
+_years_cache: OrderedDict[str, pd.DataFrame] = OrderedDict()
+_MAX_YEARS_CACHE = 20
+
+
+def _years_cache_put(key: str, df: "pd.DataFrame") -> None:
+    _years_cache[key] = df
+    _years_cache.move_to_end(key)
+    while len(_years_cache) > _MAX_YEARS_CACHE:
+        _years_cache.popitem(last=False)
+
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import StreamingResponse, JSONResponse
 
@@ -438,7 +450,12 @@ def _sse(event: str, data: dict) -> str:
 async def _fetch_stream(req: FetchRequest) -> AsyncGenerator[str, None]:
     from pipeline.download import fetch_years_incremental
 
-    years_data: dict[int, pd.DataFrame] = {}
+    # Pre-populate from LRU cache — avoids re-downloading years already fetched
+    years_data: dict[int, pd.DataFrame] = {
+        yr: _years_cache[f"{req.station_id}_{yr}"]
+        for yr in req.years
+        if f"{req.station_id}_{yr}" in _years_cache
+    }
     total = len(req.years)
 
     yield _sse("start", {"total": total, "years": req.years})
@@ -459,6 +476,10 @@ async def _fetch_stream(req: FetchRequest) -> AsyncGenerator[str, None]:
             "pct": round((i + 1) / total * 100),
         })
         await asyncio.sleep(0)   # yield control so SSE flushes
+
+    # Save to LRU cache (capped — old entries evicted automatically)
+    for yr, df in years_data.items():
+        _years_cache_put(f"{req.station_id}_{yr}", df)
 
     # Serialise fetched data to a token the /process endpoint can use
     token = f"{req.station_id}_{int(time.time())}"
