@@ -64,9 +64,27 @@ def _resolve_email(request: Request | None) -> str:
     return f"anonymous@{ip}"
 
 
-# ── simple in-process result store (keyed by token) ──────────────
-# Replace with Redis or DB for multi-worker prod deployment
-_result_store: dict[str, dict] = {}
+# ── in-process result store — LRU capped to limit RAM ────────────
+import gzip as _gzip
+from collections import OrderedDict
+
+_MAX_STORE = 10
+_result_store: OrderedDict[str, dict] = OrderedDict()
+
+
+def _gz(s: str) -> bytes:
+    return _gzip.compress(s.encode("utf-8"), compresslevel=6)
+
+
+def _ugz(v: "bytes | str") -> str:
+    return _gzip.decompress(v).decode("utf-8") if isinstance(v, bytes) else v
+
+
+def _store_put(key: str, value: dict) -> None:
+    _result_store[key] = value
+    _result_store.move_to_end(key)
+    while len(_result_store) > _MAX_STORE:
+        _result_store.popitem(last=False)
 
 # ── per-user chat token budget (resets on server restart) ────────
 # Prevents a single user from running up large API bills.
@@ -286,7 +304,7 @@ def _get_or_build_merged(stored: dict) -> pd.DataFrame:
         return merged
     from pipeline.download import build_merged
     years_data = {
-        int(yr): pd.read_json(io.StringIO(js))
+        int(yr): pd.read_json(io.StringIO(_ugz(js)))
         for yr, js in stored["years_data"].items()
     }
     merged = build_merged(years_data)
@@ -464,12 +482,12 @@ async def _fetch_stream(req: FetchRequest) -> AsyncGenerator[str, None]:
 
     # Serialise fetched data to a token the /process endpoint can use
     token = f"{req.station_id}_{int(time.time())}"
-    _result_store[token] = {
+    _store_put(token, {
         "type": "fetch",
         "station_id": req.station_id,
         "years": sorted(years_data.keys()),
-        "years_data": {yr: df.to_json(date_format="iso") for yr, df in years_data.items()},
-    }
+        "years_data": {yr: _gz(df.to_json(date_format="iso")) for yr, df in years_data.items()},
+    })
 
     yield _sse("done", {"token": token, "years_loaded": sorted(years_data.keys())})
 
@@ -564,7 +582,7 @@ def process(req: ProcessRequest, token: str = Query(...), request: Request = Non
 
     # ── store result ──────────────────────────────────────────
     result_token = f"result_{token}"
-    _result_store[result_token] = {
+    _store_put(result_token, {
         "type": "process",
         "meta": {
             "station_name": meta.station_name,
@@ -598,10 +616,10 @@ def process(req: ProcessRequest, token: str = Query(...), request: Request = Non
             "no_freeze_start": str(wr.no_freeze_start_date) if wr.no_freeze_start_date else None,
             "no_freeze_end":   str(wr.no_freeze_end_date)   if wr.no_freeze_end_date   else None,
         },
-        "hourly_df_json": psychro.hourly_dataframe.reset_index().to_json(orient="records", date_format="iso"),
-        "df_winterization_json": proc.df_winterization.reset_index().to_json(orient="records", date_format="iso"),
+        "hourly_df_json": _gz(psychro.hourly_dataframe.reset_index().to_json(orient="records", date_format="iso")),
+        "df_winterization_json": _gz(proc.df_winterization.reset_index().to_json(orient="records", date_format="iso")),
         "n_rows": len(psychro.hourly_dataframe),
-    }
+    })
 
     try:
         from utils.logger import log_event
@@ -646,7 +664,7 @@ def psychrometric_chart(token: str, units: str = "F"):
     if not stored or "hourly_df_json" not in stored:
         return JSONResponse({"error": "Token not found"}, status_code=404)
 
-    df = pd.read_json(io.StringIO(stored["hourly_df_json"]), orient="records")
+    df = pd.read_json(io.StringIO(_ugz(stored["hourly_df_json"])), orient="records")
     df = df.rename(columns={"Tdb": "Tdb_F", "Twb": "Twb_F", "Tdp": "Tdp_F", "RH": "RH_percent"})
 
     from simple_psychrometric_chart import create_simple_psychrometric_chart
@@ -719,7 +737,7 @@ def scatter_data(token: str, units: str = "F"):
     if not stored or "hourly_df_json" not in stored:
         return JSONResponse({"error": "Token not found"}, status_code=404)
 
-    df = pd.read_json(io.StringIO(stored["hourly_df_json"]), orient="records")
+    df = pd.read_json(io.StringIO(_ugz(stored["hourly_df_json"])), orient="records")
     tdb_col = "Tdb"
     twb_col = "Twb"
     if tdb_col not in df.columns:
@@ -744,7 +762,7 @@ def density_data(token: str, units: str = "F", bins: int = 60):
     if not stored or "hourly_df_json" not in stored:
         return JSONResponse({"error": "Token not found"}, status_code=404)
 
-    df = pd.read_json(io.StringIO(stored["hourly_df_json"]), orient="records")
+    df = pd.read_json(io.StringIO(_ugz(stored["hourly_df_json"])), orient="records")
     tdb = pd.to_numeric(df.get("Tdb", pd.Series(dtype=float)), errors="coerce").dropna().values
     twb = pd.to_numeric(df.get("Twb", pd.Series(dtype=float)), errors="coerce").dropna().values
     n = min(len(tdb), len(twb))
@@ -785,7 +803,7 @@ def monthly_data(token: str, units: str = "F"):
     if not stored or "hourly_df_json" not in stored:
         return JSONResponse({"error": "Token not found"}, status_code=404)
 
-    df = pd.read_json(io.StringIO(stored["hourly_df_json"]), orient="records")
+    df = pd.read_json(io.StringIO(_ugz(stored["hourly_df_json"])), orient="records")
 
     # Locate the datetime column (first column after reset_index)
     dt_col = next((c for c in df.columns if c.lower() in ("index", "time", "datetime", "date", "timestamp")), df.columns[0])
@@ -825,7 +843,7 @@ def heatmap_data(token: str, units: str = "F"):
     if not stored or "df_winterization_json" not in stored:
         return JSONResponse({"error": "Token not found"}, status_code=404)
 
-    dfw = pd.read_json(io.StringIO(stored["df_winterization_json"]), orient="records")
+    dfw = pd.read_json(io.StringIO(_ugz(stored["df_winterization_json"])), orient="records")
     # orient="records" always produces a "DATE" column from reset_index()
     date_col = next((c for c in ("DATE", "date") if c in dfw.columns), None)
     if date_col:
@@ -860,7 +878,7 @@ def freezing_data(token: str, threshold_f: float = 36.0):
     if not stored or "df_winterization_json" not in stored:
         return JSONResponse({"error": "Token not found"}, status_code=404)
 
-    dfw = pd.read_json(io.StringIO(stored["df_winterization_json"]), orient="records")
+    dfw = pd.read_json(io.StringIO(_ugz(stored["df_winterization_json"])), orient="records")
     date_col = next((c for c in ("DATE", "date") if c in dfw.columns), None)
     if date_col:
         dfw[date_col] = pd.to_datetime(dfw[date_col], utc=True).dt.tz_localize(None)
@@ -938,15 +956,15 @@ def openmeteo_estimate(lat: float, lon: float, year_start: int = 2015, year_end:
 
     # Store OM hourly + winterization data so chart endpoints can reuse it
     om_token = f"om_{lat}_{lon}_{year_start}_{year_end}"
-    _result_store[om_token] = {
+    _store_put(om_token, {
         "type": "om",
-        "hourly_df_json": psychro.hourly_dataframe.reset_index().to_json(orient="records", date_format="iso"),
-        "df_winterization_json": proc.df_winterization.reset_index().to_json(orient="records", date_format="iso"),
+        "hourly_df_json": _gz(psychro.hourly_dataframe.reset_index().to_json(orient="records", date_format="iso")),
+        "df_winterization_json": _gz(proc.df_winterization.reset_index().to_json(orient="records", date_format="iso")),
         "meta": {
             "station_name": f"ERA5 ({lat:.4f}, {lon:.4f})",
             "site_ele_ft": ele_m * 3.28084,
         },
-    }
+    })
 
     return {
         "stats": stats_rows,
@@ -971,7 +989,7 @@ def download_csv(token: str):
 
     from pipeline.download import build_merged
     years_data = {
-        int(yr): pd.read_json(io.StringIO(js))
+        int(yr): pd.read_json(io.StringIO(_ugz(js)))
         for yr, js in stored["years_data"].items()
     }
     merged = build_merged(years_data)
@@ -998,7 +1016,7 @@ def download_om_csv(token: str):
     if not stored or "hourly_df_json" not in stored:
         return JSONResponse({"error": "Token not found"}, status_code=404)
 
-    df = pd.read_json(io.StringIO(stored["hourly_df_json"]), orient="records")
+    df = pd.read_json(io.StringIO(_ugz(stored["hourly_df_json"])), orient="records")
     buf = io.StringIO()
     df.to_csv(buf, index=False)
     buf.seek(0)
