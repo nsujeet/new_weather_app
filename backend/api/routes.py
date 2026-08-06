@@ -19,11 +19,6 @@ import io
 import base64
 from typing import AsyncGenerator
 
-# In-memory NOAA year cache: key = "STATION_YEAR", lives for the server process.
-# No disk I/O — data is re-fetched from NOAA on server restart.
-import pandas as _pd_cache
-_years_cache: dict[str, _pd_cache.DataFrame] = {}
-
 import numpy as np
 import pandas as pd
 
@@ -298,18 +293,12 @@ def get_stations(lat: float, lon: float, elevation_m: float = 0.0):
 # ─────────────────────────────────────────────────────────────────
 
 def _get_or_build_merged(stored: dict) -> pd.DataFrame:
-    """Return cached merged DataFrame, building from year JSON only if needed."""
-    merged = stored.get("_merged_df")
-    if merged is not None:
-        return merged
     from pipeline.download import build_merged
     years_data = {
         int(yr): pd.read_json(io.StringIO(_ugz(js)))
         for yr, js in stored["years_data"].items()
     }
-    merged = build_merged(years_data)
-    stored["_merged_df"] = merged   # cache as live object — no re-parse next call
-    return merged
+    return build_merged(years_data)
 
 
 def _apply_filter_direct(df3: pd.DataFrame, filter_key: str, min_year: int, max_year: int) -> pd.DataFrame:
@@ -449,12 +438,7 @@ def _sse(event: str, data: dict) -> str:
 async def _fetch_stream(req: FetchRequest) -> AsyncGenerator[str, None]:
     from pipeline.download import fetch_years_incremental
 
-    # Pre-populate from in-memory cache so repeated downloads are instant
-    years_data: dict[int, pd.DataFrame] = {
-        yr: _years_cache[f"{req.station_id}_{yr}"]
-        for yr in req.years
-        if f"{req.station_id}_{yr}" in _years_cache
-    }
+    years_data: dict[int, pd.DataFrame] = {}
     total = len(req.years)
 
     yield _sse("start", {"total": total, "years": req.years})
@@ -475,10 +459,6 @@ async def _fetch_stream(req: FetchRequest) -> AsyncGenerator[str, None]:
             "pct": round((i + 1) / total * 100),
         })
         await asyncio.sleep(0)   # yield control so SSE flushes
-
-    # Save downloaded years to in-memory session cache
-    for yr, df in years_data.items():
-        _years_cache[f"{req.station_id}_{yr}"] = df
 
     # Serialise fetched data to a token the /process endpoint can use
     token = f"{req.station_id}_{int(time.time())}"
