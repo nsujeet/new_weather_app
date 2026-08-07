@@ -107,9 +107,9 @@ export default function StationStage() {
     if (!tok) return;
     if (!omDensity)     { setScatterLoading(true);  getDensityData(tok, units, 90).then(setOmDensity).catch(()=>{}).finally(()=>setScatterLoading(false)); }
     if (!omMonthlyData) { setMonthlyLoading(true);  getMonthlyData(tok, units).then(setOmMonthlyData).catch(()=>{}).finally(()=>setMonthlyLoading(false)); }
-    if (!omPsychroB64)  { setPsychroLoading(true);  getPsychroChart(tok, units).then(d=>setOmPsychroB64(d.image_b64)).catch(()=>{}).finally(()=>setPsychroLoading(false)); }
     if (!omFreezeBars)  { setFreezeLoading(true);   getFreezingData(tok).then(d=>setOmFreezeBars(d.bars)).catch(()=>{}).finally(()=>setFreezeLoading(false)); }
     if (!omHeatCells)   { setHeatLoading(true);     getHeatmapData(tok, units).then(d=>setOmHeatCells(d.cells)).catch(()=>{}).finally(()=>setHeatLoading(false)); }
+    // Psychrometric chart loads on demand only — matplotlib (~100MB) must not auto-load before NOAA fetch
   }, [omResult]);
 
   const sfx    = units === "C" ? "°C" : "°F";

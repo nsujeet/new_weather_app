@@ -681,6 +681,13 @@ def psychrometric_chart(token: str, units: str = "F"):
         unit_system="SI" if units.upper() == "C" else "IP",
     )
 
+    try:
+        import matplotlib.pyplot as _plt
+        _plt.close("all")
+    except Exception:
+        pass
+    import gc; gc.collect()
+
     if result.get("plot_bytes"):
         img_b64 = base64.b64encode(result["plot_bytes"]).decode()
         return {"image_b64": img_b64, "format": "png"}
