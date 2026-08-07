@@ -450,47 +450,49 @@ def _sse(event: str, data: dict) -> str:
 async def _fetch_stream(req: FetchRequest) -> AsyncGenerator[str, None]:
     from pipeline.download import fetch_years_incremental
 
-    # Pre-populate from LRU cache — avoids re-downloading years already fetched
+    # Pre-populate from LRU cache — years already fetched skip re-download
     years_data: dict[int, pd.DataFrame] = {
         yr: _years_cache[f"{req.station_id}_{yr}"]
         for yr in req.years
         if f"{req.station_id}_{yr}" in _years_cache
     }
-    total = len(req.years)
+    # Compress pre-cached years immediately; keep refs in years_data so fetch skips them
+    years_compressed: dict[int, bytes] = {
+        yr: _gz(df.to_json(date_format="iso"))
+        for yr, df in years_data.items()
+    }
 
+    total = len(req.years)
     yield _sse("start", {"total": total, "years": req.years})
 
     for i, result in enumerate(
         fetch_years_incremental(req.station_id, req.years, years_data, cache_dir="")
     ):
         status = result.get("status", "")
-        year = result.get("year")
-        rows = result.get("rows", 0)
+        year  = result.get("year")
+        rows  = result.get("rows", 0)
+
+        # Compress + evict each newly-downloaded year immediately — peak = 1 DF at a time
+        if year and year in years_data and year not in years_compressed:
+            df = years_data.pop(year)
+            _years_cache_put(f"{req.station_id}_{year}", df)
+            years_compressed[year] = _gz(df.to_json(date_format="iso"))
 
         yield _sse("progress", {
-            "i": i + 1,
-            "total": total,
-            "year": year,
-            "status": status,
-            "rows": rows,
+            "i": i + 1, "total": total, "year": year,
+            "status": status, "rows": rows,
             "pct": round((i + 1) / total * 100),
         })
-        await asyncio.sleep(0)   # yield control so SSE flushes
+        await asyncio.sleep(0)
 
-    # Save to LRU cache (capped — old entries evicted automatically)
-    for yr, df in years_data.items():
-        _years_cache_put(f"{req.station_id}_{yr}", df)
-
-    # Serialise fetched data to a token the /process endpoint can use
     token = f"{req.station_id}_{int(time.time())}"
     _store_put(token, {
         "type": "fetch",
         "station_id": req.station_id,
-        "years": sorted(years_data.keys()),
-        "years_data": {yr: _gz(df.to_json(date_format="iso")) for yr, df in years_data.items()},
+        "years": sorted(years_compressed.keys()),
+        "years_data": years_compressed,
     })
-
-    yield _sse("done", {"token": token, "years_loaded": sorted(years_data.keys())})
+    yield _sse("done", {"token": token, "years_loaded": sorted(years_compressed.keys())})
 
 
 @router.post("/fetch")
