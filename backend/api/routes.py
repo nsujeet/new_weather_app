@@ -75,6 +75,7 @@ def _resolve_email(request: Request | None) -> str:
 # ── in-process result store — LRU capped to limit RAM ────────────
 import gzip as _gzip
 from collections import OrderedDict
+from concurrent.futures import ProcessPoolExecutor as _ProcPool
 
 _MAX_STORE = 10
 _result_store: OrderedDict[str, dict] = OrderedDict()
@@ -93,6 +94,36 @@ def _store_put(key: str, value: dict) -> None:
     _result_store.move_to_end(key)
     while len(_result_store) > _MAX_STORE:
         _result_store.popitem(last=False)
+
+# ── subprocess worker for psychrometric chart (isolates matplotlib) ──
+# max_tasks_per_child=1 forces the worker process to exit after each chart,
+# freeing matplotlib's ~100MB resident memory back to the OS.
+
+def _psychro_worker(gz_bytes: "bytes | str", elevation_ft: float, station_name: str, unit_system: str) -> "bytes | None":
+    """Run in an isolated subprocess so matplotlib memory is freed on exit."""
+    import gzip, io
+    import pandas as _pd
+    data = gzip.decompress(gz_bytes).decode("utf-8") if isinstance(gz_bytes, bytes) else gz_bytes
+    df = _pd.read_json(io.StringIO(data), orient="records")
+    df = df.rename(columns={"Tdb": "Tdb_F", "Twb": "Twb_F", "Tdp": "Tdp_F", "RH": "RH_percent"})
+    from simple_psychrometric_chart import create_simple_psychrometric_chart
+    result = create_simple_psychrometric_chart(
+        weather_data=df,
+        elevation_ft=elevation_ft,
+        location_name=station_name,
+        output_file=None,
+        unit_system=unit_system,
+    )
+    try:
+        import matplotlib.pyplot as _plt
+        _plt.close("all")
+    except Exception:
+        pass
+    return result.get("plot_bytes")
+
+
+_psychro_executor = _ProcPool(max_workers=1, max_tasks_per_child=1)
+
 
 # ── per-user chat token budget (resets on server restart) ────────
 # Prevents a single user from running up large API bills.
@@ -663,35 +694,28 @@ def get_result(token: str):
 # ─────────────────────────────────────────────────────────────────
 
 @router.get("/chart/psychrometric")
-def psychrometric_chart(token: str, units: str = "F"):
+async def psychrometric_chart(token: str, units: str = "F"):
     stored = _result_store.get(token)
     if not stored or "hourly_df_json" not in stored:
         return JSONResponse({"error": "Token not found"}, status_code=404)
 
-    df = pd.read_json(io.StringIO(_ugz(stored["hourly_df_json"])), orient="records")
-    df = df.rename(columns={"Tdb": "Tdb_F", "Twb": "Twb_F", "Tdp": "Tdp_F", "RH": "RH_percent"})
-
-    from simple_psychrometric_chart import create_simple_psychrometric_chart
     meta = stored.get("meta", {})
-    result = create_simple_psychrometric_chart(
-        weather_data=df,
-        elevation_ft=meta.get("site_ele_ft", 0),
-        location_name=meta.get("station_name", ""),
-        output_file=None,
-        unit_system="SI" if units.upper() == "C" else "IP",
-    )
-
+    loop = asyncio.get_event_loop()
     try:
-        import matplotlib.pyplot as _plt
-        _plt.close("all")
-    except Exception:
-        pass
-    import gc; gc.collect()
+        plot_bytes = await loop.run_in_executor(
+            _psychro_executor,
+            _psychro_worker,
+            stored["hourly_df_json"],           # pass compressed bytes directly
+            float(meta.get("site_ele_ft", 0)),
+            str(meta.get("station_name", "")),
+            "SI" if units.upper() == "C" else "IP",
+        )
+    except Exception as e:
+        return JSONResponse({"error": f"chart failed: {e}"}, status_code=500)
 
-    if result.get("plot_bytes"):
-        img_b64 = base64.b64encode(result["plot_bytes"]).decode()
-        return {"image_b64": img_b64, "format": "png"}
-    return JSONResponse({"error": result.get("error", "chart failed")}, status_code=500)
+    if plot_bytes:
+        return {"image_b64": base64.b64encode(plot_bytes).decode(), "format": "png"}
+    return JSONResponse({"error": "chart failed"}, status_code=500)
 
 
 # ─────────────────────────────────────────────────────────────────
