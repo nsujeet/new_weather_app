@@ -77,7 +77,7 @@ import gzip as _gzip
 from collections import OrderedDict
 from concurrent.futures import ProcessPoolExecutor as _ProcPool
 
-_MAX_STORE = 10
+_MAX_STORE = 25
 _result_store: OrderedDict[str, dict] = OrderedDict()
 
 
@@ -337,12 +337,17 @@ def get_stations(lat: float, lon: float, elevation_m: float = 0.0):
 # ─────────────────────────────────────────────────────────────────
 
 def _get_or_build_merged(stored: dict) -> pd.DataFrame:
+    """Build merged DataFrame from compressed year JSONs; cache in stored to avoid redundant work."""
+    if "_merged_df" in stored:
+        return stored["_merged_df"]
     from pipeline.download import build_merged
     years_data = {
         int(yr): pd.read_json(io.StringIO(_ugz(js)))
         for yr, js in stored["years_data"].items()
     }
-    return build_merged(years_data)
+    merged = build_merged(years_data)
+    stored["_merged_df"] = merged
+    return merged
 
 
 def _apply_filter_direct(df3: pd.DataFrame, filter_key: str, min_year: int, max_year: int) -> pd.DataFrame:
@@ -387,11 +392,10 @@ def _apply_filter_direct(df3: pd.DataFrame, filter_key: str, min_year: int, max_
     return df3[year_mask].copy()
 
 
-@router.post("/score-filters")
-def score_filters_endpoint(token: str = Query(...), exclude_quality_codes: list[str] = Query(default=["2", "3"])):
+def _score_filters_sync(token: str, exclude_quality_codes: list) -> dict:
     stored = _result_store.get(token)
     if not stored or stored.get("type") != "fetch":
-        return JSONResponse({"error": "Fetch token not found"}, status_code=404)
+        return {"_error": "Fetch token not found", "_status": 404}
 
     from pipeline.filtering import score_filters, clean_and_shift
 
@@ -404,7 +408,6 @@ def score_filters_endpoint(token: str = Query(...), exclude_quality_codes: list[
     max_year = max(stored["years"])
     filter_results, best_key = score_filters(df3, min_year=min_year, max_year=max_year)
 
-    # Cache best key + exclude set so /process can skip re-scoring
     stored["_filter_best"] = best_key
     stored["_scored_exclude"] = exclude
 
@@ -418,15 +421,27 @@ def score_filters_endpoint(token: str = Query(...), exclude_quality_codes: list[
         }
         for name, fr in filter_results.items()
     ]
-
+    total_rows = len(merged_df)
     qa_dict = clean_qa if isinstance(clean_qa, dict) else {}
+
+    # Free working DataFrames; merged_df stays cached in stored for /process reuse
+    import gc; del df3, filter_results; gc.collect()
 
     return {
         "filters": sorted(filters_out, key=lambda x: -x["coverage_pct"]),
         "recommended": best_key,
-        "total_rows": len(merged_df),
+        "total_rows": total_rows,
         "clean_qa": qa_dict,
     }
+
+
+@router.post("/score-filters")
+async def score_filters_endpoint(token: str = Query(...), exclude_quality_codes: list[str] = Query(default=["2", "3"])):
+    loop = asyncio.get_event_loop()
+    result = await loop.run_in_executor(None, _score_filters_sync, token, exclude_quality_codes)
+    if "_error" in result:
+        return JSONResponse({"error": result["_error"]}, status_code=result["_status"])
+    return result
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -546,13 +561,12 @@ async def fetch_years(req: FetchRequest, request: Request = None):
 #  /process — merge → filter → metadata → psychrometrics
 # ─────────────────────────────────────────────────────────────────
 
-@router.post("/process")
-def process(req: ProcessRequest, token: str = Query(...), request: Request = None):
+def _process_sync(req: "ProcessRequest", token: str, request: "Request | None"):
+    import gc
     stored = _result_store.get(token)
     if not stored or stored.get("type") != "fetch":
         return JSONResponse({"error": "Token not found or expired"}, status_code=404)
 
-    # ── merge: reuse cached object, never re-parse year JSONs ──
     from pipeline.filtering import clean_and_shift, score_filters
     from pipeline.metadata import extract_metadata
     from pipeline.processing import process as run_process
@@ -560,39 +574,37 @@ def process(req: ProcessRequest, token: str = Query(...), request: Request = Non
     merged_df = _get_or_build_merged(stored)
     exclude = set(req.exclude_quality_codes)
 
-    # ── metadata — need delta_time before final clean ──────────
     meta, meta_qa = extract_metadata(merged_df, req.lat, req.lon)
-
-    # ── clean with correct timezone shift ─────────────────────
     df3, clean_qa = clean_and_shift(merged_df, delta_time=meta.delta_time, exclude_quality_codes=exclude)
 
-    # ── apply filter — NO score_filters pivot_tables here ─────
     min_year = min(req.years) if req.years else int(min(stored["years"]))
     max_year = max(req.years) if req.years else int(max(stored["years"]))
 
     filter_key = req.filter_type or stored.get("_filter_best")
     if not filter_key:
-        # fallback: score now (only if /score-filters was never called)
         filter_results, filter_key = score_filters(df3, min_year=min_year, max_year=max_year)
         from pipeline.filtering import apply_filter
         df6 = apply_filter(filter_results, filter_key)
+        del filter_results
     else:
         df6 = _apply_filter_direct(df3, filter_key, min_year, max_year)
 
+    del df3; gc.collect()
+
     if df6.empty:
+        stored.pop("_merged_df", None)
         return JSONResponse({"error": f"Filter '{filter_key}' produced no rows"}, status_code=422)
 
     req = req.model_copy(update={"filter_type": filter_key})
 
-    # ── processing — clip, resample, interpolate ───────────────
     end_year = max(req.years) if req.years else 2025
     proc = run_process(
         df6, end_year=end_year,
         clip_lower_f=req.clip_lower_f, clip_upper_f=req.clip_upper_f,
         clip_lower_dew_f=req.clip_lower_dew_f, clip_upper_dew_f=req.clip_upper_dew_f,
     )
+    del df6; gc.collect()
 
-    # ── psychrometrics ────────────────────────────────────────
     from pipeline.psychrometrics import compute_psychrometrics
     psychro = compute_psychrometrics(
         hourly_temperature_2m=proc.hourly_temperature_2m,
@@ -601,7 +613,6 @@ def process(req: ProcessRequest, token: str = Query(...), request: Request = Non
         pressure_psi=meta.pressure_psi,
     )
 
-    # ── statistics ────────────────────────────────────────────
     from pipeline.statistics import compute_design_conditions, compute_winterization
     dc = compute_design_conditions(
         hourly_dataframe        = psychro.hourly_dataframe,
@@ -615,65 +626,85 @@ def process(req: ProcessRequest, token: str = Query(...), request: Request = Non
         max_year_last_5   = dc.max_year_last_5,
     )
 
-    # ── store result ──────────────────────────────────────────
+    # Serialize to compressed bytes before freeing DataFrames
+    hourly_gz   = _gz(psychro.hourly_dataframe.reset_index().to_json(orient="records", date_format="iso"))
+    winter_gz   = _gz(proc.df_winterization.reset_index().to_json(orient="records", date_format="iso"))
+    n_rows      = len(psychro.hourly_dataframe)
+    proc_qa     = proc.qa
+    psychro_qa  = psychro.qa
+    meta_out = {
+        "station_name":      meta.station_name,
+        "station_id":        meta.station_id,
+        "station_lat":       meta.station_lat,
+        "station_lon":       meta.station_lon,
+        "site_ele_m":        meta.site_ele,
+        "site_ele_ft":       meta.site_ele * 3.28084,
+        "pressure_psi":      meta.pressure_psi,
+        "distance_miles":    meta.distance_miles,
+        "delta_time":        meta.delta_time,
+        "timezone":          meta.timezone_name,
+        "elevation_delta_ft":meta.elevation_delta_ft,
+    }
+    dc_out = {
+        "Stats":             dc.Stats.round(2).to_dict(orient="records"),
+        "yearly_grouping":   dc.yearly_grouping.reset_index().round(2).to_dict(orient="records"),
+        "T1_Tdb_acf":        dc.T1_Tdb_acf,
+        "T1_MCWB_acf":       dc.T1_MCWB_acf,
+        "T1_Twb_acf":        dc.T1_Twb_acf,
+        "T1_MCDB_acf":       dc.T1_MCDB_acf,
+        "max_year_last_5":   dc.max_year_last_5,
+        "acf":               dc.acf,
+        "qa":                dc.qa,
+    }
+    wr_out = {
+        "no_freeze_start": str(wr.no_freeze_start_date) if wr.no_freeze_start_date else None,
+        "no_freeze_end":   str(wr.no_freeze_end_date)   if wr.no_freeze_end_date   else None,
+    }
+    clean_qa_dict = clean_qa.__dict__ if hasattr(clean_qa, "__dict__") else clean_qa
+
+    # Free all large objects now that we have serialized data
+    del proc, psychro, dc, wr, merged_df
+    stored.pop("_merged_df", None)
+    gc.collect()
+
     result_token = f"result_{token}"
     _store_put(result_token, {
-        "type": "process",
-        "meta": {
-            "station_name": meta.station_name,
-            "station_id": meta.station_id,
-            "station_lat": meta.station_lat,
-            "station_lon": meta.station_lon,
-            "site_ele_m": meta.site_ele,
-            "site_ele_ft": meta.site_ele * 3.28084,
-            "pressure_psi": meta.pressure_psi,
-            "distance_miles": meta.distance_miles,
-            "delta_time": meta.delta_time,
-            "timezone": meta.timezone_name,
-            "elevation_delta_ft": meta.elevation_delta_ft,
-        },
-        "meta_qa": meta_qa,
-        "clean_qa": clean_qa.__dict__ if hasattr(clean_qa, "__dict__") else clean_qa,
-        "psychro_qa": psychro.qa,
-        "design_conditions": {
-            "Stats": dc.Stats.round(2).to_dict(orient="records"),
-            "yearly_grouping": dc.yearly_grouping.reset_index().round(2).to_dict(orient="records"),
-            "T1_Tdb_acf": dc.T1_Tdb_acf,
-            "T1_MCWB_acf": dc.T1_MCWB_acf,
-            "T1_Twb_acf": dc.T1_Twb_acf,
-            "T1_MCDB_acf": dc.T1_MCDB_acf,
-            "max_year_last_5": dc.max_year_last_5,
-            "acf": dc.acf,
-            "qa": dc.qa,
-        },
-        "filter_type": req.filter_type,
-        "winterization": {
-            "no_freeze_start": str(wr.no_freeze_start_date) if wr.no_freeze_start_date else None,
-            "no_freeze_end":   str(wr.no_freeze_end_date)   if wr.no_freeze_end_date   else None,
-        },
-        "hourly_df_json": _gz(psychro.hourly_dataframe.reset_index().to_json(orient="records", date_format="iso")),
-        "df_winterization_json": _gz(proc.df_winterization.reset_index().to_json(orient="records", date_format="iso")),
-        "n_rows": len(psychro.hourly_dataframe),
+        "type":                   "process",
+        "meta":                   meta_out,
+        "meta_qa":                meta_qa,
+        "clean_qa":               clean_qa_dict,
+        "psychro_qa":             psychro_qa,
+        "design_conditions":      dc_out,
+        "filter_type":            req.filter_type,
+        "winterization":          wr_out,
+        "hourly_df_json":         hourly_gz,
+        "df_winterization_json":  winter_gz,
+        "n_rows":                 n_rows,
     })
 
     try:
         from utils.logger import log_event
-        email = _resolve_email(request)
-        meta_s = _result_store[result_token]["meta"]
-        log_event(email, "stage6_done", f"{meta_s.get('station_name','')} n={len(psychro.hourly_dataframe)}")
+        log_event(_resolve_email(request), "stage6_done",
+                  f"{meta_out.get('station_name','')} n={n_rows}")
     except Exception:
         pass
 
     return {
-        "result_token": result_token,
-        "filter_used": req.filter_type,
-        "n_rows": len(psychro.hourly_dataframe),
-        "meta": _result_store[result_token]["meta"],
-        "design_conditions": _result_store[result_token]["design_conditions"],
-        "psychro_qa": psychro.qa,
-        "processing_qa": proc.qa,
-        "winterization": _result_store[result_token]["winterization"],
+        "result_token":     result_token,
+        "filter_used":      req.filter_type,
+        "n_rows":           n_rows,
+        "meta":             meta_out,
+        "design_conditions":dc_out,
+        "psychro_qa":       psychro_qa,
+        "processing_qa":    proc_qa,
+        "winterization":    wr_out,
     }
+
+
+@router.post("/process")
+async def process(req: ProcessRequest, token: str = Query(...), request: Request = None):
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _process_sync, req, token, request)
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -941,75 +972,80 @@ def freezing_data(token: str, threshold_f: float = 36.0):
 #  /openmeteo  — quick estimate for a lat/lon + year range
 # ─────────────────────────────────────────────────────────────────
 
-@router.get("/openmeteo")
-def openmeteo_estimate(lat: float, lon: float, year_start: int = 2015, year_end: int = 2024, units: str = "F"):
-    import traceback as _tb
+def _openmeteo_sync(lat: float, lon: float, year_start: int, year_end: int, units: str) -> dict:
+    import gc, traceback as _tb
     try:
         from pipeline.openmeteo import fetch_openmeteo
-    except ImportError as e:
-        return JSONResponse({"error": f"Missing package: {e}"}, status_code=500)
-
-    try:
         from pipeline.om_pipeline import run_om_pipeline
         from pipeline.geo_utils import get_elevation_m, calc_pressure_psi
     except ImportError as e:
-        return JSONResponse({"error": f"Import error: {e}"}, status_code=500)
+        return {"_error": f"Missing package: {e}", "_status": 500}
 
     try:
         result = fetch_openmeteo(lat, lon, year_start, year_end)
     except Exception as e:
-        return JSONResponse({"error": f"Open-Meteo API error: {e}"}, status_code=502)
+        return {"_error": f"Open-Meteo API error: {e}", "_status": 502}
 
     if result is None:
-        return JSONResponse({"error": "Open-Meteo returned no data"}, status_code=502)
+        return {"_error": "Open-Meteo returned no data", "_status": 502}
 
-    raw, om_ele_m = result   # fetch_openmeteo returns (df, elevation_m)
+    raw, om_ele_m = result
 
     try:
         ele_m = om_ele_m or get_elevation_m(lat, lon) or 0.0
         pressure_psi = calc_pressure_psi(ele_m)
         proc, psychro, dc, wr = run_om_pipeline(
-            om_df         = raw,
-            end_year      = year_end,
-            pressure_psi  = pressure_psi,
+            om_df=raw, end_year=year_end, pressure_psi=pressure_psi,
         )
     except Exception as e:
-        return JSONResponse({"error": f"Pipeline error: {e}\n{_tb.format_exc()}"}, status_code=500)
+        return {"_error": f"Pipeline error: {e}\n{_tb.format_exc()}", "_status": 500}
 
+    # Extract all needed values to plain dicts/scalars before freeing DataFrames
     stats_rows = dc.Stats.round(2).to_dict(orient="records") if dc is not None else []
-
-    # Add Celsius columns to stats if units == C
     if units.upper() == "C" and stats_rows:
         for row in stats_rows:
             for fk, ck in [("DB_F","DB_C"),("WB_F","WB_C"),("MCWB_F","MCWB_C"),("MCDB_F","MCDB_C")]:
                 if fk in row and row[fk] is not None:
                     row[ck] = round((row[fk] - 32) * 5 / 9, 2)
+    yearly_rows = (
+        dc.yearly_grouping.reset_index().round(2).to_dict(orient="records")
+        if dc is not None and not dc.yearly_grouping.empty else []
+    )
+    wint_start = str(wr.no_freeze_start_date) if wr and wr.no_freeze_start_date else None
+    wint_end   = str(wr.no_freeze_end_date)   if wr and wr.no_freeze_end_date   else None
+    hourly_gz  = _gz(psychro.hourly_dataframe.reset_index().to_json(orient="records", date_format="iso"))
+    winter_gz  = _gz(proc.df_winterization.reset_index().to_json(orient="records", date_format="iso"))
 
-    yearly_rows = []
-    if dc is not None and not dc.yearly_grouping.empty:
-        yearly_rows = dc.yearly_grouping.reset_index().round(2).to_dict(orient="records")
+    # Free all large objects before storing
+    del raw, proc, psychro, dc, wr
+    gc.collect()
 
-    # Store OM hourly + winterization data so chart endpoints can reuse it
     om_token = f"om_{lat}_{lon}_{year_start}_{year_end}"
     _store_put(om_token, {
         "type": "om",
-        "hourly_df_json": _gz(psychro.hourly_dataframe.reset_index().to_json(orient="records", date_format="iso")),
-        "df_winterization_json": _gz(proc.df_winterization.reset_index().to_json(orient="records", date_format="iso")),
+        "hourly_df_json":         hourly_gz,
+        "df_winterization_json":  winter_gz,
         "meta": {
             "station_name": f"ERA5 ({lat:.4f}, {lon:.4f})",
-            "site_ele_ft": ele_m * 3.28084,
+            "site_ele_ft":  ele_m * 3.28084,
         },
     })
 
     return {
-        "stats": stats_rows,
-        "yearly": yearly_rows,
-        "winterization": {
-            "no_freeze_start": str(wr.no_freeze_start_date) if wr and wr.no_freeze_start_date else None,
-            "no_freeze_end":   str(wr.no_freeze_end_date)   if wr and wr.no_freeze_end_date   else None,
-        },
-        "om_token": om_token,
+        "stats":         stats_rows,
+        "yearly":        yearly_rows,
+        "winterization": {"no_freeze_start": wint_start, "no_freeze_end": wint_end},
+        "om_token":      om_token,
     }
+
+
+@router.get("/openmeteo")
+async def openmeteo_estimate(lat: float, lon: float, year_start: int = 2015, year_end: int = 2024, units: str = "F"):
+    loop = asyncio.get_event_loop()
+    result = await loop.run_in_executor(None, _openmeteo_sync, lat, lon, year_start, year_end, units)
+    if "_error" in result:
+        return JSONResponse({"error": result["_error"]}, status_code=result["_status"])
+    return result
 
 
 # ─────────────────────────────────────────────────────────────────

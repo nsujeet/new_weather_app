@@ -4,7 +4,7 @@
  */
 import { useEffect, useState } from "react";
 import { useStore } from "../store";
-import { scoreFilters, processData, getOpenMeteo } from "../api";
+import { scoreFilters, processData } from "../api";
 import Card from "../components/Card";
 
 const QC_OPTIONS = ["0", "1", "2", "3", "4", "5", "6", "9"];
@@ -20,51 +20,20 @@ export default function FilterStage() {
     fetchToken, lat, lon, siteInfo, selectedStation, selectedYears, units,
     filterScores, selectedFilter, excludeQualityCodes,
     clipLower, clipUpper, clipLowerDew, clipUpperDew,
-    omResult, omLoading,
     setFilterScores, setSelectedFilter, setExcludeQualityCodes,
     setClipLower, setClipUpper, setClipLowerDew, setClipUpperDew,
     setProcessResult, advanceTo, setStage,
-    setOmResult, setOmLoading, setOmError,
   } = useStore();
 
   const [scoring,    setScoring]    = useState(false);
   const [processing, setProcessing] = useState(false);
   const [error,      setError]      = useState<string | null>(null);
-  const [omStatus,   setOmStatus]   = useState<"idle"|"loading"|"done"|"error">("idle");
-  const [omErrMsg,   setOmErrMsg]   = useState<string | null>(null);
 
   // Auto-score on mount if not yet done
   useEffect(() => {
     if (filterScores || !fetchToken) return;
     runScoring();
   }, [fetchToken]);
-
-  // Fallback: fire OM only if SiteStage didn't already get it — always last 15 years
-  useEffect(() => {
-    if (omResult || omLoading || lat == null || lon == null) return;
-    const omEnd   = new Date().getFullYear() - 1;
-    const omStart = omEnd - 14;
-    console.log("[FilterStage] firing OM fallback", { lat, lon, omStart, omEnd });
-    setOmStatus("loading");
-    setOmLoading(true);
-    setOmError(null);
-    getOpenMeteo(lat, lon, omStart, omEnd, units)
-      .then((r) => {
-        console.log("[FilterStage] OM success", r);
-        setOmResult(r);
-        setOmLoading(false);
-        setOmStatus("done");
-      })
-      .catch((e: unknown) => {
-        const err = e as { response?: { data?: { error?: string; detail?: string } }; message?: string };
-        const msg = err?.response?.data?.error ?? err?.response?.data?.detail ?? err?.message ?? "Open-Meteo failed";
-        console.error("[FilterStage] OM error", msg);
-        setOmError(msg);
-        setOmLoading(false);
-        setOmErrMsg(msg);
-        setOmStatus("error");
-      });
-  }, []);
 
   const runScoring = async () => {
     if (!fetchToken) return;
@@ -262,20 +231,6 @@ export default function FilterStage() {
       )}
 
       {error && <p className="text-red-500 text-sm mb-3">{error}</p>}
-
-      {/* Open-Meteo ERA5 status */}
-      {omStatus !== "idle" && (
-        <div className={`flex justify-between items-center text-xs px-3 py-2 rounded mb-3 ${
-          omStatus === "error"   ? "bg-red-950 border border-red-800" :
-          omStatus === "done"    ? "bg-green-950 border border-green-800" :
-                                   "bg-blue-950 border border-blue-800"
-        }`}>
-          <span className="text-gray-400">🌐 Open-Meteo ERA5</span>
-          {omStatus === "loading" && <span className="text-blue-400 animate-pulse">fetching…</span>}
-          {omStatus === "done"    && <span className="text-green-400">✓ ready — will appear in results</span>}
-          {omStatus === "error"   && <span className="text-red-400 break-all">✗ {omErrMsg}</span>}
-        </div>
-      )}
 
       <button
         onClick={handleConfirm}
