@@ -23,14 +23,14 @@ from typing import AsyncGenerator
 import numpy as np
 import pandas as pd
 
-# LRU cache for NOAA year DataFrames — capped to avoid OOM
-# 20 slots ≈ 2 stations × 10 years, ~80MB max
-_years_cache: OrderedDict[str, pd.DataFrame] = OrderedDict()
+# LRU cache for NOAA year data — stores compressed bytes, not raw DataFrames
+# 20 slots × ~2MB compressed ≈ 40MB max (was ~200MB when storing raw DFs)
+_years_cache: OrderedDict[str, bytes] = OrderedDict()
 _MAX_YEARS_CACHE = 20
 
 
-def _years_cache_put(key: str, df: "pd.DataFrame") -> None:
-    _years_cache[key] = df
+def _years_cache_put(key: str, gz: bytes) -> None:
+    _years_cache[key] = gz
     _years_cache.move_to_end(key)
     while len(_years_cache) > _MAX_YEARS_CACHE:
         _years_cache.popitem(last=False)
@@ -496,18 +496,19 @@ def _sse(event: str, data: dict) -> str:
 
 async def _fetch_stream(req: FetchRequest) -> AsyncGenerator[str, None]:
     from pipeline.download import fetch_years_incremental
+    import gc
 
-    # Pre-populate from LRU cache — years already fetched skip re-download
-    years_data: dict[int, pd.DataFrame] = {
-        yr: _years_cache[f"{req.station_id}_{yr}"]
-        for yr in req.years
-        if f"{req.station_id}_{yr}" in _years_cache
-    }
-    # Compress pre-cached years immediately; keep refs in years_data so fetch skips them
-    years_compressed: dict[int, bytes] = {
-        yr: _gz(df.to_json(date_format="iso"))
-        for yr, df in years_data.items()
-    }
+    # Pre-populate from cache: cache now stores compressed bytes, decompress only for
+    # fetch_years_incremental which needs actual DataFrames to know what to skip.
+    # These DFs are freed below as soon as the generator yields each cached year.
+    years_compressed: dict[int, bytes] = {}
+    years_data: dict[int, pd.DataFrame] = {}
+    for yr in req.years:
+        key = f"{req.station_id}_{yr}"
+        if key in _years_cache:
+            gz = _years_cache[key]                              # compressed bytes
+            years_compressed[yr] = gz                          # already done
+            years_data[yr] = pd.read_json(io.StringIO(_ugz(gz)))  # DF for the generator
 
     total = len(req.years)
     yield _sse("start", {"total": total, "years": req.years})
@@ -519,11 +520,17 @@ async def _fetch_stream(req: FetchRequest) -> AsyncGenerator[str, None]:
         year  = result.get("year")
         rows  = result.get("rows", 0)
 
-        # Compress + evict each newly-downloaded year immediately — peak = 1 DF at a time
-        if year and year in years_data and year not in years_compressed:
-            df = years_data.pop(year)
-            _years_cache_put(f"{req.station_id}_{year}", df)
-            years_compressed[year] = _gz(df.to_json(date_format="iso"))
+        if year and year in years_data:
+            if year not in years_compressed:
+                # Newly downloaded year: compress → cache bytes → free DF immediately
+                df = years_data.pop(year)
+                gz = _gz(df.to_json(date_format="iso"))
+                del df; gc.collect()
+                years_compressed[year] = gz
+                _years_cache_put(f"{req.station_id}_{year}", gz)
+            else:
+                # Pre-cached year: DF was only needed for the generator, free it now
+                years_data.pop(year, None)
 
         yield _sse("progress", {
             "i": i + 1, "total": total, "year": year,
