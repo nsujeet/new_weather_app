@@ -95,6 +95,32 @@ def _store_put(key: str, value: dict) -> None:
     while len(_result_store) > _MAX_STORE:
         _result_store.popitem(last=False)
 
+# ── Shared decompressed-DataFrame cache for chart endpoints ──────────
+# Prevents N concurrent chart requests from each decompressing the same
+# large hourly DataFrame independently (N × 100MB → 1 × 100MB peak).
+import threading as _threading
+
+_df_cache: dict[str, tuple["pd.DataFrame", float]] = {}
+_df_cache_lock = _threading.Lock()
+_DF_CACHE_TTL = 60  # seconds — freed after 60s of no requests for that token
+
+
+def _get_cached_df(cache_key: str, gz: "bytes | str") -> "pd.DataFrame":
+    """Return shared decompressed DataFrame; decompress once, reuse for TTL seconds."""
+    now = time.time()
+    with _df_cache_lock:
+        entry = _df_cache.get(cache_key)
+        if entry and now - entry[1] < _DF_CACHE_TTL:
+            return entry[0]
+        df = pd.read_json(io.StringIO(_ugz(gz)), orient="records")
+        _df_cache[cache_key] = (df, now)
+        # Purge expired entries while we hold the lock
+        stale = [k for k, (_, ts) in _df_cache.items() if now - ts > _DF_CACHE_TTL]
+        for k in stale:
+            del _df_cache[k]
+        return df
+
+
 # ── subprocess worker for psychrometric chart (isolates matplotlib) ──
 # max_tasks_per_child=1 forces the worker process to exit after each chart,
 # freeing matplotlib's ~100MB resident memory back to the OS.
@@ -810,7 +836,7 @@ def scatter_data(token: str, units: str = "F"):
     if not stored or "hourly_df_json" not in stored:
         return JSONResponse({"error": "Token not found"}, status_code=404)
 
-    df = pd.read_json(io.StringIO(_ugz(stored["hourly_df_json"])), orient="records")
+    df = _get_cached_df(f"hourly_{token}", stored["hourly_df_json"])
     tdb_col = "Tdb"
     twb_col = "Twb"
     if tdb_col not in df.columns:
@@ -835,7 +861,7 @@ def density_data(token: str, units: str = "F", bins: int = 60):
     if not stored or "hourly_df_json" not in stored:
         return JSONResponse({"error": "Token not found"}, status_code=404)
 
-    df = pd.read_json(io.StringIO(_ugz(stored["hourly_df_json"])), orient="records")
+    df = _get_cached_df(f"hourly_{token}", stored["hourly_df_json"])
     tdb = pd.to_numeric(df.get("Tdb", pd.Series(dtype=float)), errors="coerce").dropna().values
     twb = pd.to_numeric(df.get("Twb", pd.Series(dtype=float)), errors="coerce").dropna().values
     n = min(len(tdb), len(twb))
@@ -876,7 +902,7 @@ def monthly_data(token: str, units: str = "F"):
     if not stored or "hourly_df_json" not in stored:
         return JSONResponse({"error": "Token not found"}, status_code=404)
 
-    df = pd.read_json(io.StringIO(_ugz(stored["hourly_df_json"])), orient="records")
+    df = _get_cached_df(f"hourly_{token}", stored["hourly_df_json"])
 
     # Locate the datetime column (first column after reset_index)
     dt_col = next((c for c in df.columns if c.lower() in ("index", "time", "datetime", "date", "timestamp")), df.columns[0])
@@ -916,8 +942,7 @@ def heatmap_data(token: str, units: str = "F"):
     if not stored or "df_winterization_json" not in stored:
         return JSONResponse({"error": "Token not found"}, status_code=404)
 
-    dfw = pd.read_json(io.StringIO(_ugz(stored["df_winterization_json"])), orient="records")
-    # orient="records" always produces a "DATE" column from reset_index()
+    dfw = _get_cached_df(f"winter_{token}", stored["df_winterization_json"])
     date_col = next((c for c in ("DATE", "date") if c in dfw.columns), None)
     if date_col:
         dfw[date_col] = pd.to_datetime(dfw[date_col], utc=True).dt.tz_localize(None)
@@ -951,7 +976,7 @@ def freezing_data(token: str, threshold_f: float = 36.0):
     if not stored or "df_winterization_json" not in stored:
         return JSONResponse({"error": "Token not found"}, status_code=404)
 
-    dfw = pd.read_json(io.StringIO(_ugz(stored["df_winterization_json"])), orient="records")
+    dfw = _get_cached_df(f"winter_{token}", stored["df_winterization_json"])
     date_col = next((c for c in ("DATE", "date") if c in dfw.columns), None)
     if date_col:
         dfw[date_col] = pd.to_datetime(dfw[date_col], utc=True).dt.tz_localize(None)
