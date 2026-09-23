@@ -21,9 +21,12 @@ _REQUEST_TIMEOUT = 120    # seconds per chunk request
 
 def _make_client(cache_dir: str = ".cache", expire_after: int = 3600):
     session = requests_cache.CachedSession(cache_dir, expire_after=expire_after)
-    # Inject timeout on every underlying HTTP send
+    # Inject a default timeout — use setdefault so retry logic can override it
     _orig_send = session.send
-    session.send = lambda req, **kw: _orig_send(req, timeout=_REQUEST_TIMEOUT, **kw)
+    def _send_with_timeout(req, **kw):
+        kw.setdefault("timeout", _REQUEST_TIMEOUT)
+        return _orig_send(req, **kw)
+    session.send = _send_with_timeout
     retry_session = retry(session, retries=5, backoff_factor=0.2)
     return openmeteo_requests.Client(session=retry_session)
 
