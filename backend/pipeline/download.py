@@ -426,9 +426,9 @@ def build_merged(
 
     keep   = [c for c in FINAL_COLS if c in merged.columns]
     merged = merged[keep]
-    merged = merged[
-        merged.astype(str).agg("".join, axis=1).str.strip() != ""
-    ]
+    # Drop blank rows by checking only the DATE column — avoids a full
+    # all-column string concatenation which creates a large intermediate object.
+    merged = merged[merged["DATE"].astype(str).str.strip().ne("")]
     return merged.sort_values("DATE").reset_index(drop=True)
 
 

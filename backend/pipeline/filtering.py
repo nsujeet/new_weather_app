@@ -244,11 +244,13 @@ def score_filters(
         results_dict: { filter_key: FilterResult }
         best_filter_key: key of the recommended filter
     """
-    df3 = df3.copy()
-    df3["DATE"] = pd.to_datetime(df3["DATE"], errors="coerce")
+    # Parse DATE once — avoids a full df3.copy() just for datetime access.
+    # All filter masks use _d; the windowed DFs come from the original df3.
+    _d = pd.to_datetime(df3["DATE"], errors="coerce")
 
     # year window — same as notebook: MinYear+1 to MaxYear inclusive
     ALL_YEARS = list(range(int(min_year) + 1, int(max_year) + 1))
+    _year_mask = (_d.dt.year > min_year) & (_d.dt.year <= max_year)
 
     # ── Best values for each dimension ────────────────────────
     def _idxmax_safe(series):
@@ -257,59 +259,50 @@ def score_filters(
 
     best_report  = _idxmax_safe(df3["temperature_Report_Type"]) \
                    if "temperature_Report_Type" in df3.columns else None
-    best_minute  = _idxmax_safe(df3["DATE"].dt.minute)
+    best_minute  = _idxmax_safe(_d.dt.minute)
     best_quality = _idxmax_safe(df3["temperature_Quality_Code"]) \
                    if "temperature_Quality_Code" in df3.columns else None
 
-    # ── Build 4 filter DataFrames ─────────────────────────────
-    def _year_filter(df):
-        return df[
-            (df["DATE"].dt.year > min_year) &
-            (df["DATE"].dt.year <= max_year)
-        ]
-
+    # ── Build 4 windowed filter DataFrames ────────────────────
+    # Year mask is applied here directly — no intermediate pre-filter DF.
     candidates = {}
 
-    # Filter 1: report type
     if best_report is not None:
-        df_rt = df3[df3["temperature_Report_Type"] == best_report]
-        candidates["report_type"] = (df_rt, f"Report type = {best_report}")
+        m = (df3["temperature_Report_Type"] == best_report) & _year_mask
+        candidates["report_type"] = (df3[m], f"Report type = {best_report}")
 
-    # Filter 2: minute frequency
     if best_minute is not None:
-        df_mf = df3[df3["DATE"].dt.minute == best_minute]
-        candidates["minute_freq"] = (df_mf, f"Minute = :{best_minute:02d}")
+        m = (_d.dt.minute == best_minute) & _year_mask
+        candidates["minute_freq"] = (df3[m], f"Minute = :{best_minute:02d}")
 
-    # Filter 3: minute + report type
     if best_report is not None and best_minute is not None:
-        df_mr = df3[
+        m = (
             (df3["temperature_Report_Type"] == best_report) &
-            (df3["DATE"].dt.minute == best_minute)
-        ]
+            (_d.dt.minute == best_minute) & _year_mask
+        )
         candidates["minute_and_report"] = (
-            df_mr,
+            df3[m],
             f"Minute = :{best_minute:02d} AND report = {best_report}"
         )
 
-    # Filter 4: quality code
     if best_quality is not None:
-        df_qt = df3[df3["temperature_Quality_Code"] == best_quality]
+        m = (df3["temperature_Quality_Code"] == best_quality) & _year_mask
         candidates["quality_temp(all)"] = (
-            df_qt,
+            df3[m],
             f"Quality code = {best_quality}"
         )
 
     # ── Score each filter ─────────────────────────────────────
     results: dict[str, FilterResult] = {}
 
-    for key, (df_raw, label) in candidates.items():
-        df_windowed = _year_filter(df_raw)
-        missing_tbl = _calculate_missing_percentage(df_windowed, ALL_YEARS)
+    for key, (df_windowed, label) in candidates.items():
+        # Pass pre-parsed dates for this window — avoids reparsing DATE inside the helper
+        missing_tbl = _calculate_missing_percentage(df_windowed, ALL_YEARS,
+                                                    dates=_d[df_windowed.index])
         total_miss  = float(missing_tbl.to_numpy().sum())
         n_cells     = missing_tbl.size
         coverage    = round(100 - (total_miss / n_cells), 1) if n_cells > 0 else 0
 
-        # get best_value from the label
         bv = label.split("=")[-1].strip() if "=" in label else "—"
 
         results[key] = FilterResult(
@@ -357,7 +350,7 @@ def apply_filter(
             f"Filter key '{chosen_key}' not found. "
             f"Available: {list(results.keys())}"
         )
-    return results[chosen_key].df.copy()
+    return results[chosen_key].df
 
 
 # ─────────────────────────────────────────────────────────────
@@ -367,26 +360,34 @@ def apply_filter(
 def _calculate_missing_percentage(
     df:          pd.DataFrame,
     force_years: list[int],
+    dates:       "pd.Series | None" = None,
 ) -> pd.DataFrame:
     """
     Returns a 12 x N DataFrame (months × years) with % missing hours.
     Identical to calculate_missing_percentage() in your notebook Cell 18.
+
+    Pass `dates` (pre-parsed datetime Series with same index as df) to avoid
+    a full df.copy() + DATE reparse — saves ~50MB per call for large DFs.
     """
     if df is None or df.empty:
         return pd.DataFrame(
             100.0, index=range(1, 13), columns=force_years
         )
 
-    local = df.copy()
-    local["DATE"] = pd.to_datetime(local["DATE"], errors="coerce")
-    local = local.dropna(subset=["DATE"])
+    if dates is None:
+        dates = pd.to_datetime(df["DATE"], errors="coerce")
 
-    count_hrs = local.pivot_table(
-        values="temperature",
-        index=local["DATE"].dt.month,
-        columns=local["DATE"].dt.year,
-        aggfunc="count",
-        fill_value=0,
+    # Work with two slim Series instead of copying the full wide DataFrame
+    valid = dates.notna()
+    d_month = dates[valid].dt.month
+    d_year  = dates[valid].dt.year
+    temp    = (df["temperature"][valid]
+               if "temperature" in df.columns
+               else pd.Series(1, index=dates[valid].index))
+
+    count_hrs = (
+        pd.DataFrame({"month": d_month.values, "year": d_year.values, "t": temp.values})
+        .pivot_table(values="t", index="month", columns="year", aggfunc="count", fill_value=0)
     )
 
     count_hrs = count_hrs.reindex(index=range(1, 13), fill_value=0)

@@ -363,17 +363,14 @@ def get_stations(lat: float, lon: float, elevation_m: float = 0.0):
 # ─────────────────────────────────────────────────────────────────
 
 def _get_or_build_merged(stored: dict) -> pd.DataFrame:
-    """Build merged DataFrame from compressed year JSONs; cache in stored to avoid redundant work."""
-    if "_merged_df" in stored:
-        return stored["_merged_df"]
+    """Build merged DataFrame from compressed year JSONs. Always rebuilds — never cached in stored
+    to avoid holding a 100MB raw DF per active fetch token across the full LRU lifespan."""
     from pipeline.download import build_merged
     years_data = {
         int(yr): pd.read_json(io.StringIO(_ugz(js)))
         for yr, js in stored["years_data"].items()
     }
-    merged = build_merged(years_data)
-    stored["_merged_df"] = merged
-    return merged
+    return build_merged(years_data)
 
 
 def _apply_filter_direct(df3: pd.DataFrame, filter_key: str, min_year: int, max_year: int) -> pd.DataFrame:
@@ -450,8 +447,7 @@ def _score_filters_sync(token: str, exclude_quality_codes: list) -> dict:
     total_rows = len(merged_df)
     qa_dict = clean_qa if isinstance(clean_qa, dict) else {}
 
-    # Free working DataFrames; merged_df stays cached in stored for /process reuse
-    import gc; del df3, filter_results; gc.collect()
+    import gc; del df3, filter_results, merged_df; gc.collect()
 
     return {
         "filters": sorted(filters_out, key=lambda x: -x["coverage_pct"]),
@@ -697,7 +693,6 @@ def _process_sync(req: "ProcessRequest", token: str, request: "Request | None"):
 
     # Free all large objects now that we have serialized data
     del proc, psychro, dc, wr, merged_df
-    stored.pop("_merged_df", None)
     gc.collect()
 
     result_token = f"result_{token}"
@@ -842,11 +837,14 @@ def scatter_data(token: str, units: str = "F"):
     if tdb_col not in df.columns:
         return JSONResponse({"error": "No Tdb column"}, status_code=500)
 
+    # Work on Series copies — never mutate the shared cached DataFrame
+    tdb = df[tdb_col].copy()
+    twb = df[twb_col].copy()
     if units.upper() == "C":
-        df[tdb_col] = (df[tdb_col] - 32) * 5 / 9
-        df[twb_col] = (df[twb_col] - 32) * 5 / 9
+        tdb = (tdb - 32) * 5 / 9
+        twb = (twb - 32) * 5 / 9
 
-    points = df[[tdb_col, twb_col]].dropna().rename(columns={tdb_col: "x", twb_col: "y"})
+    points = pd.DataFrame({"x": tdb, "y": twb}).dropna()
 
     return {
         "points": points.to_dict(orient="records"),
@@ -904,22 +902,23 @@ def monthly_data(token: str, units: str = "F"):
 
     df = _get_cached_df(f"hourly_{token}", stored["hourly_df_json"])
 
-    # Locate the datetime column (first column after reset_index)
+    # Build a minimal local frame — never mutate the shared cached DataFrame
     dt_col = next((c for c in df.columns if c.lower() in ("index", "time", "datetime", "date", "timestamp")), df.columns[0])
-    df["_dt"] = pd.to_datetime(df[dt_col], errors="coerce", utc=True).dt.tz_convert(None)
-    df["month"] = df["_dt"].dt.month
-
-    df["Tdb"] = pd.to_numeric(df.get("Tdb", pd.Series(dtype=float)), errors="coerce")
-    df["Twb"] = pd.to_numeric(df.get("Twb", pd.Series(dtype=float)), errors="coerce")
+    _dt   = pd.to_datetime(df[dt_col], errors="coerce", utc=True).dt.tz_convert(None)
+    month = _dt.dt.month
+    tdb   = pd.to_numeric(df.get("Tdb", pd.Series(dtype=float)), errors="coerce")
+    twb   = pd.to_numeric(df.get("Twb", pd.Series(dtype=float)), errors="coerce")
 
     if units.upper() == "C":
-        df["Tdb"] = (df["Tdb"] - 32) * 5 / 9
-        df["Twb"] = (df["Twb"] - 32) * 5 / 9
+        tdb = (tdb - 32) * 5 / 9
+        twb = (twb - 32) * 5 / 9
+
+    local = pd.DataFrame({"month": month, "Tdb": tdb, "Twb": twb})
 
     month_names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
     records = []
     for m in range(1, 13):
-        sub = df[df["month"] == m].dropna(subset=["Tdb", "Twb"])
+        sub = local[local["month"] == m].dropna(subset=["Tdb", "Twb"])
         if sub.empty:
             continue
         records.append({
@@ -942,7 +941,8 @@ def heatmap_data(token: str, units: str = "F"):
     if not stored or "df_winterization_json" not in stored:
         return JSONResponse({"error": "Token not found"}, status_code=404)
 
-    dfw = _get_cached_df(f"winter_{token}", stored["df_winterization_json"])
+    # Work on a local copy — never mutate the shared cached DataFrame
+    dfw = _get_cached_df(f"winter_{token}", stored["df_winterization_json"]).copy()
     date_col = next((c for c in ("DATE", "date") if c in dfw.columns), None)
     if date_col:
         dfw[date_col] = pd.to_datetime(dfw[date_col], utc=True).dt.tz_localize(None)
@@ -976,7 +976,8 @@ def freezing_data(token: str, threshold_f: float = 36.0):
     if not stored or "df_winterization_json" not in stored:
         return JSONResponse({"error": "Token not found"}, status_code=404)
 
-    dfw = _get_cached_df(f"winter_{token}", stored["df_winterization_json"])
+    # Work on a local copy — never mutate the shared cached DataFrame
+    dfw = _get_cached_df(f"winter_{token}", stored["df_winterization_json"]).copy()
     date_col = next((c for c in ("DATE", "date") if c in dfw.columns), None)
     if date_col:
         dfw[date_col] = pd.to_datetime(dfw[date_col], utc=True).dt.tz_localize(None)

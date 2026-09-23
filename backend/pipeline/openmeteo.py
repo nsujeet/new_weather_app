@@ -2,11 +2,10 @@
 pipeline/openmeteo.py
 
 Fetch hourly temperature + dew point from the Open-Meteo archive API
-(ERA5 reanalysis) using the official openmeteo-requests SDK which
-provides built-in retry and caching.
+(ERA5 reanalysis) using the official openmeteo-requests SDK.
 
-Returns a DataFrame compatible with the rest of the pipeline plus
-the elevation reported by Open-Meteo for the coordinates.
+Large date ranges are split into 5-year chunks to avoid server-side
+timeouts on the archive API.
 """
 
 import pandas as pd
@@ -16,33 +15,21 @@ import openmeteo_requests
 
 
 _ARCHIVE_URL = "https://archive-api.open-meteo.com/v1/archive"
+_CHUNK_YEARS = 5          # max years per API request
+_REQUEST_TIMEOUT = 120    # seconds per chunk request
 
 
 def _make_client(cache_dir: str = ".cache", expire_after: int = 3600):
     session = requests_cache.CachedSession(cache_dir, expire_after=expire_after)
+    # Inject timeout on every underlying HTTP send
+    _orig_send = session.send
+    session.send = lambda req, **kw: _orig_send(req, timeout=_REQUEST_TIMEOUT, **kw)
     retry_session = retry(session, retries=5, backoff_factor=0.2)
     return openmeteo_requests.Client(session=retry_session)
 
 
-def fetch_openmeteo(
-    lat: float,
-    lon: float,
-    start_year: int,
-    end_year: int,
-    timeout: int = 120,
-) -> tuple[pd.DataFrame, float | None]:
-    """
-    Download hourly temperature, dew point and surface pressure for a
-    coordinate range of years using the official Open-Meteo SDK.
-
-    Returns:
-        (df, elevation_m)
-        df           — DataFrame compatible with the rest of the pipeline
-        elevation_m  — site elevation in metres reported by Open-Meteo,
-                       or None if unavailable
-    """
-    client = _make_client()
-
+def _fetch_chunk(client, lat: float, lon: float, start_year: int, end_year: int):
+    """Fetch one chunk and return (df, elevation_m)."""
     params = {
         "latitude":         lat,
         "longitude":        lon,
@@ -52,12 +39,8 @@ def fetch_openmeteo(
         "temperature_unit": "celsius",
         "timezone":         "UTC",
     }
-
-    responses = client.weather_api(_ARCHIVE_URL, params=params)
-    response  = responses[0]
-
-    # Elevation reported by Open-Meteo for these coordinates
-    elevation_m = float(response.Elevation()) if response.Elevation() is not None else None
+    response  = client.weather_api(_ARCHIVE_URL, params=params)[0]
+    elevation = float(response.Elevation()) if response.Elevation() is not None else None
 
     hourly = response.Hourly()
     times  = pd.date_range(
@@ -73,6 +56,37 @@ def fetch_openmeteo(
         "dew_point_temperature": hourly.Variables(1).ValuesAsNumpy(),
         "surface_pressure_hpa":  hourly.Variables(2).ValuesAsNumpy(),
     })
+    return df, elevation
+
+
+def fetch_openmeteo(
+    lat: float,
+    lon: float,
+    start_year: int,
+    end_year: int,
+) -> tuple[pd.DataFrame, float | None]:
+    """
+    Download hourly temperature, dew point and surface pressure.
+    Splits large date ranges into 5-year chunks to avoid API timeouts.
+
+    Returns:
+        (df, elevation_m)
+    """
+    client = _make_client()
+
+    chunks: list[pd.DataFrame] = []
+    elevation_m: float | None = None
+    year = start_year
+
+    while year <= end_year:
+        chunk_end = min(year + _CHUNK_YEARS - 1, end_year)
+        df_chunk, elev = _fetch_chunk(client, lat, lon, year, chunk_end)
+        chunks.append(df_chunk)
+        if elevation_m is None and elev is not None:
+            elevation_m = elev
+        year = chunk_end + 1
+
+    df = pd.concat(chunks, ignore_index=True)
 
     # Metadata columns expected by downstream stages
     df["STATION"]                       = "OPENMETEO"

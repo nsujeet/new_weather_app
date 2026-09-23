@@ -84,6 +84,8 @@ def process(
     Returns:
         ProcessingResult with all DataFrames and QA stats
     """
+    import gc as _gc
+
     result = ProcessingResult()
     messages = []
 
@@ -94,22 +96,24 @@ def process(
     df_original, count_orig, max_orig = _clip_and_index(
         df6, clip_lower_f, clip_upper_f, dew_lower, dew_upper
     )
-    result.df_original     = df_original
     result.missing_original = _missing_pct(count_orig, max_orig)
+    rows_original = len(df_original)
 
     # ── Step 2: Resample to hourly ────────────────────────────
     df_resample, count_res, max_res = _resample(df_original)
-    result.df_resample     = df_resample
     result.missing_resample = _missing_pct(count_res, max_res)
+    rows_resample = len(df_resample)
+    del df_original; _gc.collect()          # no longer needed after resample
 
     # ── Step 3: Donor replacement ─────────────────────────────
     missing_pct_resample = _missing_pct(count_res, max_res)
     df_replacement, log, filled = _donor_replacement(
         df_resample, missing_pct_resample
     )
-    result.df_replacement  = df_replacement
     result.replacement_log = log
     result.total_filled    = filled
+    rows_replacement = len(df_replacement)
+    del df_resample; _gc.collect()          # no longer needed after replacement
 
     count_repl = _count_hrs(df_replacement)
     max_repl   = _max_hrs(df_replacement)
@@ -125,13 +129,12 @@ def process(
     result.start_15 = start_15
     result.end_date = end_date
 
-    df_interp_full = (
-        df_replacement
-        .interpolate(method="linear")
-    )
+    df_interp_full = df_replacement.interpolate(method="linear")
+    del df_replacement; _gc.collect()       # no longer needed after interpolation
 
     result.df_interpolated  = df_interp_full.loc[start_10:end_date].copy()
     result.df_winterization = df_interp_full.loc[start_15:end_date].copy()
+    del df_interp_full; _gc.collect()       # both slices captured; free the full DF
 
     count_interp = _count_hrs(result.df_interpolated)
     max_interp   = _max_hrs(result.df_interpolated)
@@ -164,10 +167,10 @@ def process(
     result.qa = {
         "status":   "pass" if not messages else "warn",
         "metrics": {
-            "rows_original":    len(df_original),
-            "rows_resample":    len(df_resample),
-            "rows_replacement": len(df_replacement),
-            "rows_interpolated":len(result.df_interpolated),
+            "rows_original":     rows_original,
+            "rows_resample":     rows_resample,
+            "rows_replacement":  rows_replacement,
+            "rows_interpolated": len(result.df_interpolated),
             "rows_winterization":len(result.df_winterization),
             "filled_TMP_F":     filled.get("TMP_F", 0),
             "filled_DEW_F":     filled.get("DEW_F", 0),
